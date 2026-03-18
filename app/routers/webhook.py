@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from app.services.db import get_session
 from app.services.notification_service import send_win_notification
 from app.constants.prizes import LOTTERY_PRIZES
-from app.services.lottery_checker import check_govisetha_ticket
+from app.services.lottery_checker import check_lottery_ticket
 from sqlmodel import Session, text
 
 logger = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ def process_new_draw(payload: dict):
                 for ticket in tickets:
                     ticket_id, user_id, scanned_nums, scanned_letter = ticket
                     t_nums = scanned_nums if isinstance(scanned_nums, list) else []
-                    result = check_govisetha_ticket(t_nums, scanned_letter, draw_numbers, draw_letter)
+                    result = check_lottery_ticket(lottery_name, t_nums, scanned_letter, draw_numbers, draw_letter)
 
                     new_status = 'WIN' if result["is_winner"] else 'NO_WIN'
                     win_amt = result["win_amount"]

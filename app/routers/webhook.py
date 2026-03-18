@@ -1,7 +1,10 @@
 import logging
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
+from pydantic import BaseModel, Field
 from app.services.db import get_session
 from app.services.notification_service import send_win_notification
+from app.constants.prizes import LOTTERY_PRIZES
+from app.services.lottery_checker import check_govisetha_ticket
 from sqlmodel import Session, text
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,7 @@ def register_fcm_token(payload: RegisterFcmTokenRequest):
 
     return {"status": "ok", "message": "FCM token saved"}
 
+
 def process_new_draw(payload: dict):
     record = payload.get("record", {})
     if not record:
@@ -52,8 +56,7 @@ def process_new_draw(payload: dict):
     draw_no = record.get("draw_no")
     draw_numbers = record.get("numbers", [])
     draw_letter = record.get("letter")
-    draw_special = record.get("special")  # optional, for Mega Power or other lotteries
-    
+
     if not lottery_name or not draw_no:
         logger.error(f"Incomplete draw record: {record}")
         return
@@ -69,44 +72,41 @@ def process_new_draw(payload: dict):
         if str(lottery_name).lower() == "govisetha":
             try:
                 query = text("""
-                    SELECT id, user_id, scanned_numbers, scanned_letter 
-                    FROM public.tickets 
-                    WHERE lottery_type = 'GOVISETHA' 
-                      AND draw_number = :draw_no 
+                    SELECT id, user_id, scanned_numbers, scanned_letter
+                    FROM public.tickets
+                    WHERE lottery_type = 'GOVISETHA'
+                      AND draw_number = :draw_no
                       AND status = 'PENDING'
                 """)
                 tickets = session.execute(query, {"draw_no": draw_no}).fetchall()
-                
+
                 logger.info(f"Found {len(tickets)} pending Govisetha tickets for draw {draw_no}")
-                
+
                 for ticket in tickets:
                     ticket_id, user_id, scanned_nums, scanned_letter = ticket
-                    
                     t_nums = scanned_nums if isinstance(scanned_nums, list) else []
-                    
                     result = check_govisetha_ticket(t_nums, scanned_letter, draw_numbers, draw_letter)
-                    
+
                     new_status = 'WIN' if result["is_winner"] else 'NO_WIN'
                     win_amt = result["win_amount"]
-                    
+
                     update_query = text("""
-                        UPDATE public.tickets 
-                        SET status = :status, win_amount = :win_amt 
+                        UPDATE public.tickets
+                        SET status = :status, win_amount = :win_amt
                         WHERE id = :id
                     """)
                     session.execute(update_query, {"status": new_status, "win_amt": win_amt, "id": ticket_id})
-                    
+
                     if result["is_winner"]:
                         logger.info(f"Ticket {ticket_id} WON Rs {win_amt}")
                         user_query = text("SELECT fcm_token FROM public.users WHERE id = :user_id")
                         user_record = session.execute(user_query, {"user_id": user_id}).fetchone()
-                        
+
                         if user_record and user_record[0]:
-                            fcm_token = user_record[0]
-                            send_win_notification(fcm_token, lottery_name, win_amt, draw_no)
+                            send_win_notification(user_record[0], lottery_name, win_amt, draw_no)
                         else:
                             logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
-                        
+
                 session.commit()
                 logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")
             except Exception as e:

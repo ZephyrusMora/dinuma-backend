@@ -1,20 +1,13 @@
 import os
 import logging
-<<<<<<< HEAD
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
 from dotenv import load_dotenv
 from sqlalchemy import (
     create_engine, Table, Column, Integer,
-    String, MetaData, Boolean, func
+    String, MetaData, Boolean, func, Date, DateTime, PrimaryKeyConstraint
 )
-=======
-from datetime import datetime
-
-from dotenv import load_dotenv
-from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData, PrimaryKeyConstraint, Date, DateTime, func
->>>>>>> 736605a634d0c9b648847c772a6420207f70e126
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
@@ -23,32 +16,25 @@ from sqlmodel import Session
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 logger = logging.getLogger(__name__)
 
-# Database connection
-<<<<<<< HEAD
-connection_uri = os.getenv("CONNECTION_URI")
-=======
 connection_uri = os.getenv("CONNECTION_URI") or os.getenv("DATABASE_URL")
->>>>>>> 736605a634d0c9b648847c772a6420207f70e126
 if not connection_uri:
     raise RuntimeError("CONNECTION_URI or DATABASE_URL environment variable not set")
 
 engine = create_engine(connection_uri)
 metadata = MetaData()
 
-# Original draws table
 jaya_draws = Table(
     "jaya_draws",
     metadata,
     Column("lottery_name", String, nullable=False),
     Column("draw_no", Integer, nullable=False),
-    Column("date", Date, nullable=False),  # <-- changed to Date
+    Column("date", Date, nullable=False),
     Column("letter", String, nullable=False),
     Column("numbers", PG_ARRAY(Integer), nullable=False),
-    Column("created_at", DateTime, default=datetime.utcnow),  # keep as DateTime
+    Column("created_at", DateTime, default=datetime.utcnow),
     PrimaryKeyConstraint("lottery_name", "draw_no", name="jaya_draws_pk")
 )
 
-# FCM tokens table
 fcm_tokens = Table(
     "fcm_tokens",
     metadata,
@@ -59,6 +45,7 @@ fcm_tokens = Table(
     Column("is_active", Boolean, default=True),
     Column("created_at", String, default=lambda: str(datetime.now(timezone.utc))),
 )
+
 @contextmanager
 def get_session():
     """Provide a SQLModel session for webhook and other services."""
@@ -101,7 +88,6 @@ def insert_draw(draw_data: dict):
             logger.warning("Skipping insert: invalid numbers for draw %s", draw_no_int)
             return
 
-        # Parse date string from scraping, e.g., "Thursday March 12, 2026"
         date_str = draw_data.get("date") or ""
         try:
             parsed_date = datetime.strptime(date_str, "%A %B %d, %Y").date()
@@ -112,7 +98,7 @@ def insert_draw(draw_data: dict):
         stmt = jaya_draws.insert().values(
             lottery_name=draw_data.get("lottery_name") or "unknown",
             draw_no=draw_no_int,
-            date=parsed_date,  # <-- store as Date
+            date=parsed_date,
             letter=draw_data.get("letter") or "",
             numbers=numbers,
             created_at=datetime.utcnow(),
@@ -125,7 +111,7 @@ def insert_draw(draw_data: dict):
             logger.exception("Failed to insert draw %s", draw_no_int)
 
 
-def get_max_draw_no(lottery_name: str) -> int | None:
+def get_max_draw_no(lottery_name: str):
     """Return the maximum draw_no for a specific lottery, or None if empty."""
     with engine.connect() as conn:
         try:
@@ -140,9 +126,20 @@ def get_max_draw_no(lottery_name: str) -> int | None:
             logger.exception("Failed to get max draw_no for %s", lottery_name)
             return None
 
-<<<<<<< HEAD
 
-def upsert_fcm_token(token: str, user_id: str | None, lottery_name: str | None = None):
+def delete_old_draws(months: int = 6):
+    """Delete draws older than `months` months."""
+    from datetime import timedelta
+    from sqlalchemy import delete
+
+    cutoff_date = datetime.utcnow().date() - timedelta(days=30 * months)
+    with engine.begin() as conn:
+        stmt = delete(jaya_draws).where(jaya_draws.c.date < cutoff_date)
+        result = conn.execute(stmt)
+        logger.info("Deleted %s old rows.", result.rowcount)
+
+
+def upsert_fcm_token(token: str, user_id, lottery_name=None):
     """Insert or reactivate an FCM token. user_id may be None for anonymous users."""
     with engine.begin() as conn:
         existing = conn.execute(
@@ -164,7 +161,7 @@ def upsert_fcm_token(token: str, user_id: str | None, lottery_name: str | None =
             ))
 
 
-def get_active_tokens(lottery_name: str | None = None) -> list[str]:
+def get_active_tokens(lottery_name=None):
     """Return all active FCM tokens, optionally filtered by lottery subscription."""
     with engine.connect() as conn:
         q = select(fcm_tokens.c.fcm_token).where(fcm_tokens.c.is_active == True)
@@ -185,20 +182,8 @@ def deactivate_token(token: str):
             .where(fcm_tokens.c.fcm_token == token)
             .values(is_active=False)
         )
-=======
-def delete_old_draws(months: int = 6):
-    """Delete draws older than `months` months."""
-    from datetime import datetime, timedelta
-    from sqlalchemy import delete
 
-    cutoff_date = datetime.utcnow().date() - timedelta(days=30*months)
-
-    with engine.begin() as conn:
-        stmt = delete(jaya_draws).where(jaya_draws.c.date < cutoff_date)
-        result = conn.execute(stmt)
-        print(f"Deleted {result.rowcount} old rows.")
 
 if __name__ == '__main__':
     init_db()
     print("Tables created.")
->>>>>>> 736605a634d0c9b648847c772a6420207f70e126

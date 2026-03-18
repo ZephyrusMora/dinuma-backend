@@ -1,18 +1,22 @@
 import os
 import logging
 from datetime import datetime, timezone
+from contextlib import contextmanager
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData, func
+from sqlalchemy import (
+    create_engine, Table, Column, Integer,
+    String, MetaData, Boolean, func
+)
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
 from sqlmodel import Session
 
-load_dotenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 logger = logging.getLogger(__name__)
 
-# Database connection 
+# Database connection
 connection_uri = os.getenv("CONNECTION_URI")
 if not connection_uri:
     raise RuntimeError("CONNECTION_URI environment variable not set")
@@ -20,7 +24,7 @@ if not connection_uri:
 engine = create_engine(connection_uri)
 metadata = MetaData()
 
-# Table definition 
+# Original draws table
 jaya_draws = Table(
     "jaya_draws",
     metadata,
@@ -32,15 +36,26 @@ jaya_draws = Table(
     Column("created_at", String, default=lambda: str(datetime.now(timezone.utc))),
 )
 
+# FCM tokens table
+fcm_tokens = Table(
+    "fcm_tokens",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("user_id", String, nullable=True),
+    Column("fcm_token", String, nullable=False, unique=True),
+    Column("lottery_name", String, nullable=True),
+    Column("is_active", Boolean, default=True),
+    Column("created_at", String, default=lambda: str(datetime.now(timezone.utc))),
+)
+@contextmanager
+def get_session():
+    """Provide a SQLModel session for webhook and other services."""
+    with Session(engine) as session:
+        yield session
 
 def init_db():
     """Create the tables defined in metadata if they don't exist."""
     metadata.create_all(engine)
-
-
-def get_session():
-    """Dependency generator for SQLModel sessions."""
-    return Session(engine)
 
 
 def insert_draw(draw_data: dict):
@@ -57,7 +72,6 @@ def insert_draw(draw_data: dict):
         return
 
     with engine.begin() as conn:
-        # Check for duplicates
         existing = conn.execute(
             select(jaya_draws.c.draw_no).where(jaya_draws.c.draw_no == draw_no_int)
         )
@@ -65,7 +79,6 @@ def insert_draw(draw_data: dict):
             logger.info("Draw %s already exists, skipping", draw_no_int)
             return
 
-        # Parse numbers list
         numbers_list = draw_data.get("numbers") or []
         try:
             numbers = [int(n) for n in numbers_list]
@@ -103,3 +116,48 @@ def get_max_draw_no(lottery_name: str) -> int | None:
         except Exception:
             logger.exception("Failed to get max draw_no for %s", lottery_name)
             return None
+
+
+def upsert_fcm_token(token: str, user_id: str | None, lottery_name: str | None = None):
+    """Insert or reactivate an FCM token. user_id may be None for anonymous users."""
+    with engine.begin() as conn:
+        existing = conn.execute(
+            select(fcm_tokens.c.id).where(fcm_tokens.c.fcm_token == token)
+        ).first()
+        if existing:
+            conn.execute(
+                fcm_tokens.update()
+                .where(fcm_tokens.c.fcm_token == token)
+                .values(is_active=True, user_id=user_id)
+            )
+        else:
+            conn.execute(fcm_tokens.insert().values(
+                user_id=user_id,
+                fcm_token=token,
+                lottery_name=lottery_name,
+                is_active=True,
+                created_at=str(datetime.now(timezone.utc)),
+            ))
+
+
+def get_active_tokens(lottery_name: str | None = None) -> list[str]:
+    """Return all active FCM tokens, optionally filtered by lottery subscription."""
+    with engine.connect() as conn:
+        q = select(fcm_tokens.c.fcm_token).where(fcm_tokens.c.is_active == True)
+        if lottery_name:
+            q = q.where(
+                (fcm_tokens.c.lottery_name == lottery_name) |
+                (fcm_tokens.c.lottery_name == None)
+            )
+        rows = conn.execute(q).fetchall()
+        return [r[0] for r in rows]
+
+
+def deactivate_token(token: str):
+    """Mark a token as inactive (e.g. after FCM reports it as invalid)."""
+    with engine.begin() as conn:
+        conn.execute(
+            fcm_tokens.update()
+            .where(fcm_tokens.c.fcm_token == token)
+            .values(is_active=False)
+        )

@@ -4,6 +4,7 @@ from app.services.db import get_session
 from app.services.govisetha_checker import check_govisetha_ticket
 from app.services.notification_service import send_win_notification
 from sqlmodel import Session, text
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -11,6 +12,37 @@ router = APIRouter(
     prefix="/webhook",
     tags=["webhook"],
 )
+
+
+class RegisterFcmTokenRequest(BaseModel):
+    user_id: int = Field(..., gt=0)
+    fcm_token: str = Field(..., min_length=10)
+
+
+@router.post("/register-fcm-token")
+def register_fcm_token(payload: RegisterFcmTokenRequest):
+    """Persist or update the device FCM token for a user."""
+    with get_session() as session:
+        exists_query = text("SELECT id FROM public.users WHERE id = :user_id")
+        existing_user = session.execute(exists_query, {"user_id": payload.user_id}).fetchone()
+
+        if not existing_user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        update_query = text(
+            """
+            UPDATE public.users
+            SET fcm_token = :fcm_token
+            WHERE id = :user_id
+            """
+        )
+        session.execute(
+            update_query,
+            {"user_id": payload.user_id, "fcm_token": payload.fcm_token},
+        )
+        session.commit()
+
+    return {"status": "ok", "message": "FCM token saved"}
 
 def process_new_draw(payload: dict):
     record = payload.get("record", {})
@@ -33,18 +65,19 @@ def process_new_draw(payload: dict):
         if str(lottery_name).lower() == "govisetha":
             try:
                 query = text("""
-                    SELECT id, user_id, scanned_numbers, scanned_letter 
-                    FROM public.tickets 
+                                        SELECT t.id, t.user_id, t.scanned_numbers, t.scanned_letter, u.fcm_token
+                                        FROM public.tickets t
+                                        LEFT JOIN public.users u ON u.id = t.user_id
                     WHERE lottery_type = 'GOVISETHA' 
-                      AND draw_number = :draw_no 
-                      AND status = 'PENDING'
+                                            AND draw_number = :draw_no
+                                            AND status = 'PENDING'
                 """)
                 tickets = session.execute(query, {"draw_no": draw_no}).fetchall()
                 
                 logger.info(f"Found {len(tickets)} pending Govisetha tickets for draw {draw_no}")
                 
                 for ticket in tickets:
-                    ticket_id, user_id, scanned_nums, scanned_letter = ticket
+                    ticket_id, user_id, scanned_nums, scanned_letter, fcm_token = ticket
                     
                     t_nums = scanned_nums if isinstance(scanned_nums, list) else []
                     
@@ -62,14 +95,13 @@ def process_new_draw(payload: dict):
                     
                     if result["is_winner"]:
                         logger.info(f"Ticket {ticket_id} WON Rs {win_amt}")
-                        user_query = text("SELECT fcm_token FROM public.users WHERE id = :user_id")
-                        user_record = session.execute(user_query, {"user_id": user_id}).fetchone()
-                        
-                        if user_record and user_record[0]:
-                            fcm_token = user_record[0]
+                        if fcm_token:
                             send_win_notification(fcm_token, lottery_name, win_amt, draw_no)
                         else:
-                            logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
+                            logger.info(
+                                "No FCM token found for user %s (or user row missing). Skipping notification.",
+                                user_id,
+                            )
                         
                 session.commit()
                 logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")

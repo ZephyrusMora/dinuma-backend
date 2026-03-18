@@ -4,23 +4,31 @@ import logging
 
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.services.db import init_db
+from app.services.firebase import init_firebase
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Startup and shutdown lifecycle for the FastAPI app."""
-    # Startup 
+    # Startup
     try:
         init_db()
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error("Failed to initialize database: %s", e)
 
+    try:
+        init_firebase()
+        logger.info("Firebase initialized successfully")
+    except Exception as e:
+        logger.error("Failed to initialize Firebase: %s", e)
+
     start_scheduler()
     logger.info("Scheduler started")
-    
+
     yield  # app is running
 
     # Shutdown
@@ -29,12 +37,13 @@ async def lifespan(application: FastAPI):
 
 app = FastAPI(title="NLB Lottery API", lifespan=lifespan)
 
-
-# ── Routers ──
-from app.routers.mahajana_sampatha import router as mahajana_router  # noqa: E402
-from app.routers.webhook import router as webhook_router             # noqa: E402
+# Routers
+from app.routers.mahajana_sampatha import router as mahajana_router
+from app.routers.notifications import router as notifications_router
+from app.routers.webhook import router as webhook_router
 
 app.include_router(mahajana_router)
+app.include_router(notifications_router)
 app.include_router(webhook_router)
 
 
@@ -42,4 +51,3 @@ app.include_router(webhook_router)
 def health_check():
     """Simple health-check endpoint."""
     return {"status": "ok", "service": "NLB Lottery API"}
-

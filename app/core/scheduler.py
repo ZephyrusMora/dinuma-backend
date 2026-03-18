@@ -4,33 +4,23 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.mahajana_scraper import scrape_draw
-from app.services.db import insert_draw, get_max_draw_no
+from app.services.db import insert_draw, get_max_draw_no, get_active_tokens
+from app.services.firebase import send_draw_notification
 
 logger = logging.getLogger(__name__)
 
-# configure lotteries and fallback as in run_scrape
 LOTTERIES = [
     "mahajana-sampatha",
     "zand",
 ]
 
-# fallback draw id for new lotteries
 FALLBACK_LAST_DRAW_ID = 6099
-
-# Sri Lanka timezone (UTC+5:30)
 SL_TZ = ZoneInfo("Asia/Colombo")
-
 scheduler = BackgroundScheduler(timezone=SL_TZ)
 
 
 def scheduled_scrape():
-    """Run one scrape for each configured lottery.
-
-    The original version targeted only Mahajana Sampatha; now every lottery in
-    `LOTTERIES` will be advanced independently.  The fallback draw ID ensures
-    we start from a reasonable number on a fresh database.
-    """
-
+    """Run one scrape for each configured lottery."""
     for lottery_name in LOTTERIES:
         try:
             max_db = get_max_draw_no(lottery_name)
@@ -55,6 +45,12 @@ def scheduled_scrape():
 
             insert_draw(data)
             logger.info("[%s] Scraped and inserted draw %s", lottery_name, data.get("draw_no"))
+
+            # Send push notifications to subscribed users
+            draw_no = data.get("draw_no")
+            tokens = get_active_tokens(lottery_name)
+            if tokens:
+                send_draw_notification(lottery_name, draw_no, tokens)
 
         except Exception:
             logger.exception("scheduled_scrape failed for %s", lottery_name)

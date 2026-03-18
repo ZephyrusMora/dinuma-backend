@@ -1,5 +1,6 @@
 import os
 import logging
+<<<<<<< HEAD
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
@@ -8,6 +9,12 @@ from sqlalchemy import (
     create_engine, Table, Column, Integer,
     String, MetaData, Boolean, func
 )
+=======
+from datetime import datetime
+
+from dotenv import load_dotenv
+from sqlalchemy import create_engine, Table, Column, Integer, String, MetaData, PrimaryKeyConstraint, Date, DateTime, func
+>>>>>>> 736605a634d0c9b648847c772a6420207f70e126
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
@@ -17,9 +24,13 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.en
 logger = logging.getLogger(__name__)
 
 # Database connection
+<<<<<<< HEAD
 connection_uri = os.getenv("CONNECTION_URI")
+=======
+connection_uri = os.getenv("CONNECTION_URI") or os.getenv("DATABASE_URL")
+>>>>>>> 736605a634d0c9b648847c772a6420207f70e126
 if not connection_uri:
-    raise RuntimeError("CONNECTION_URI environment variable not set")
+    raise RuntimeError("CONNECTION_URI or DATABASE_URL environment variable not set")
 
 engine = create_engine(connection_uri)
 metadata = MetaData()
@@ -28,12 +39,13 @@ metadata = MetaData()
 jaya_draws = Table(
     "jaya_draws",
     metadata,
-    Column("lottery_name", String, primary_key=False),
-    Column("draw_no", Integer, primary_key=True),
-    Column("date", String, nullable=False),
+    Column("lottery_name", String, nullable=False),
+    Column("draw_no", Integer, nullable=False),
+    Column("date", Date, nullable=False),  # <-- changed to Date
     Column("letter", String, nullable=False),
     Column("numbers", PG_ARRAY(Integer), nullable=False),
-    Column("created_at", String, default=lambda: str(datetime.now(timezone.utc))),
+    Column("created_at", DateTime, default=datetime.utcnow),  # keep as DateTime
+    PrimaryKeyConstraint("lottery_name", "draw_no", name="jaya_draws_pk")
 )
 
 # FCM tokens table
@@ -73,7 +85,10 @@ def insert_draw(draw_data: dict):
 
     with engine.begin() as conn:
         existing = conn.execute(
-            select(jaya_draws.c.draw_no).where(jaya_draws.c.draw_no == draw_no_int)
+            select(jaya_draws.c.draw_no).where(
+                (jaya_draws.c.draw_no == draw_no_int) &
+                (jaya_draws.c.lottery_name == draw_data.get("lottery_name"))
+            )
         )
         if existing.first():
             logger.info("Draw %s already exists, skipping", draw_no_int)
@@ -86,13 +101,21 @@ def insert_draw(draw_data: dict):
             logger.warning("Skipping insert: invalid numbers for draw %s", draw_no_int)
             return
 
+        # Parse date string from scraping, e.g., "Thursday March 12, 2026"
+        date_str = draw_data.get("date") or ""
+        try:
+            parsed_date = datetime.strptime(date_str, "%A %B %d, %Y").date()
+        except Exception:
+            logger.warning("Invalid date format: %s", date_str)
+            return
+
         stmt = jaya_draws.insert().values(
             lottery_name=draw_data.get("lottery_name") or "unknown",
             draw_no=draw_no_int,
-            date=draw_data.get("date") or "",
+            date=parsed_date,  # <-- store as Date
             letter=draw_data.get("letter") or "",
             numbers=numbers,
-            created_at=str(datetime.now(timezone.utc)),
+            created_at=datetime.utcnow(),
         )
 
         try:
@@ -117,6 +140,7 @@ def get_max_draw_no(lottery_name: str) -> int | None:
             logger.exception("Failed to get max draw_no for %s", lottery_name)
             return None
 
+<<<<<<< HEAD
 
 def upsert_fcm_token(token: str, user_id: str | None, lottery_name: str | None = None):
     """Insert or reactivate an FCM token. user_id may be None for anonymous users."""
@@ -161,3 +185,20 @@ def deactivate_token(token: str):
             .where(fcm_tokens.c.fcm_token == token)
             .values(is_active=False)
         )
+=======
+def delete_old_draws(months: int = 6):
+    """Delete draws older than `months` months."""
+    from datetime import datetime, timedelta
+    from sqlalchemy import delete
+
+    cutoff_date = datetime.utcnow().date() - timedelta(days=30*months)
+
+    with engine.begin() as conn:
+        stmt = delete(jaya_draws).where(jaya_draws.c.date < cutoff_date)
+        result = conn.execute(stmt)
+        print(f"Deleted {result.rowcount} old rows.")
+
+if __name__ == '__main__':
+    init_db()
+    print("Tables created.")
+>>>>>>> 736605a634d0c9b648847c772a6420207f70e126

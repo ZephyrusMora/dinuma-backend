@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import os
 import logging
 
@@ -7,11 +6,6 @@ from firebase_admin import credentials, messaging
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Firebase Admin initialisation — singleton, safe to call multiple times.
-# Set FIREBASE_CREDENTIALS_PATH in your environment (or .env) to the
-# absolute path of your downloaded service-account JSON file.
-# ---------------------------------------------------------------------------
 _SERVICE_ACCOUNT_PATH = os.getenv(
     "FIREBASE_CREDENTIALS_PATH",
     "firebase-credentials.json",
@@ -36,15 +30,7 @@ def send_win_notification(
     win_amount: float,
     draw_no: int,
 ) -> None:
-    """Send a push notification to a single device when their ticket wins.
-
-    Parameters
-    ----------
-    fcm_token:    The device FCM registration token stored in the users table.
-    lottery_name: e.g. "govisetha"
-    win_amount:   Prize amount in LKR (e.g. 2000000.0)
-    draw_no:      The draw number that produced the win.
-    """
+    """Send a push notification to a single device when their ticket wins."""
     if not fcm_token:
         logger.warning("[FCM] send_win_notification called with empty token, skipping.")
         return
@@ -58,7 +44,6 @@ def send_win_notification(
                     f"won Rs {win_amount:,.2f}!"
                 ),
             ),
-            # Extra key-value pairs available in the app even when backgrounded
             data={
                 "type": "WIN",
                 "lottery_name": lottery_name,
@@ -66,7 +51,6 @@ def send_win_notification(
                 "win_amount": str(win_amount),
             },
             token=fcm_token,
-            # Android-specific: high priority wakes up the device
             android=messaging.AndroidConfig(
                 priority="high",
                 notification=messaging.AndroidNotification(
@@ -74,7 +58,6 @@ def send_win_notification(
                     channel_id="wins",
                 ),
             ),
-            # iOS-specific
             apns=messaging.APNSConfig(
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(sound="default", badge=1),
@@ -86,28 +69,11 @@ def send_win_notification(
         logger.info("[FCM] Notification sent successfully. Message ID: %s", response)
 
     except messaging.UnregisteredError:
-        # The token is no longer valid — the user uninstalled the app or
-        # re-installed without signing in again. Log and move on; the next
-        # sign-in will refresh the token.
         logger.warning(
-            "[FCM] Token unregistered for draw %s. The user may have "
-            "uninstalled the app. Token: %s",
+            "[FCM] Token unregistered for draw %s. Token: %s",
             draw_no,
             fcm_token,
         )
 
     except Exception:
         logger.exception("[FCM] Failed to send win notification for draw %s", draw_no)
-=======
-import logging
-logger = logging.getLogger(__name__)
-
-def send_win_notification(fcm_token: str, lottery_name: str, win_amount: float, draw_no: int):
-    """Send a win notification to the user.
-    This is a no-op placeholder if no FCM integration is configured.
-    """
-    if not fcm_token:
-        logger.warning("No FCM token provided; skipping notification.")
-        return
-    logger.info("[Notification] Would send win notification to token=%s lottery=%s draw=%s amount=%.2f", fcm_token, lottery_name, draw_no, win_amount)
->>>>>>> 736605a634d0c9b648847c772a6420207f70e126

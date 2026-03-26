@@ -88,7 +88,13 @@ def process_new_draw(payload: dict):
                 for ticket in tickets:
                     ticket_id, user_id, scanned_nums, scanned_letter = ticket
                     t_nums = scanned_nums if isinstance(scanned_nums, list) else []
-                    result = check_lottery_ticket(lottery_name, t_nums, scanned_letter, draw_numbers, draw_letter)
+                    result = check_lottery_ticket(
+                        ticket_numbers=t_nums,
+                        ticket_letter=scanned_letter,
+                        draw_numbers=draw_numbers,
+                        draw_letter=draw_letter,
+                        prize_tiers=prize_tiers
+                    )
 
                     new_status = 'WIN' if result["is_winner"] else 'NO_WIN'
                     win_amt = result["win_amount"]

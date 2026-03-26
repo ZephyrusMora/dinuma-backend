@@ -57,9 +57,12 @@ def process_new_draw(payload: dict):
     draw_numbers = record.get("numbers", [])
     draw_letter = record.get("letter")
 
-    if not lottery_name or not draw_no:
+    if not lottery_name or draw_no is None:
         logger.error(f"Incomplete draw record: {record}")
         return
+        
+    # Cast to string to avoid Postgres "operator does not exist: text = integer" error
+    draw_no = str(draw_no)
 
     logger.info(f"Processing new draw: {lottery_name} #{draw_no}")
 

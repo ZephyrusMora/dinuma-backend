@@ -55,6 +55,19 @@ def process_new_draw(payload: dict):
     lottery_name = record.get("lottery_name")
     draw_no = record.get("draw_no")
     draw_numbers = record.get("numbers", [])
+    
+    # Supabase webhooks often send postgres arrays as strings like "{4,5,21,72}"
+    if isinstance(draw_numbers, str):
+        if draw_numbers.startswith('{') and draw_numbers.endswith('}'):
+            draw_numbers = [int(n.strip()) for n in draw_numbers[1:-1].split(',') if n.strip().isdigit()]
+        else:
+            # Fallback in case it's a JSON string
+            import json
+            try:
+                draw_numbers = json.loads(draw_numbers)
+            except:
+                draw_numbers = []
+
     draw_letter = record.get("letter")
 
     if not lottery_name or draw_no is None:

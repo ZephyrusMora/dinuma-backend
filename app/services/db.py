@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 from contextlib import contextmanager
 from app.services.db import get_session        
 from app.services.db import upsert_fcm_token 
+from contextlib import contextmanager
+from sqlalchemy.orm import Session
 
 from dotenv import load_dotenv
 from sqlalchemy import (
     create_engine, Table, Column, Integer,
-    String, MetaData, Boolean, func, Date, DateTime, PrimaryKeyConstraint
+    String, MetaData, Boolean, func, Date, DateTime, PrimaryKeyConstraint,text
 )
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
@@ -50,9 +52,9 @@ fcm_tokens = Table(
 
 @contextmanager
 def get_session():
-    """Provide a SQLModel session for webhook and other services."""
-    with Session(engine) as session:
-        yield session
+    """Provide a transactional SQLAlchemy session."""
+    with engine.begin() as conn:
+        yield conn
 
 def init_db():
     """Create the tables defined in metadata if they don't exist."""
@@ -141,26 +143,22 @@ def delete_old_draws(months: int = 6):
         logger.info("Deleted %s old rows.", result.rowcount)
 
 
-def upsert_fcm_token(token: str, user_id, lottery_name=None):
-    """Insert or reactivate an FCM token. user_id may be None for anonymous users."""
+def upsert_fcm_token(fcm_token: str, user_id: str | None, lottery_name: str | None):
+    """Insert a new FCM token or update it if it already exists."""
     with engine.begin() as conn:
-        existing = conn.execute(
-            select(fcm_tokens.c.id).where(fcm_tokens.c.fcm_token == token)
-        ).first()
-        if existing:
-            conn.execute(
-                fcm_tokens.update()
-                .where(fcm_tokens.c.fcm_token == token)
-                .values(is_active=True, user_id=user_id)
-            )
-        else:
-            conn.execute(fcm_tokens.insert().values(
-                user_id=user_id,
-                fcm_token=token,
-                lottery_name=lottery_name,
-                is_active=True,
-                created_at=str(datetime.now(timezone.utc)),
-            ))
+        conn.execute(
+            text("""
+                INSERT INTO public.fcm_tokens (user_id, fcm_token, lottery_name, is_active, created_at)
+                VALUES (:user_id, :fcm_token, :lottery_name, true, now())
+                ON CONFLICT (fcm_token)
+                DO UPDATE SET
+                    user_id = EXCLUDED.user_id,
+                    lottery_name = EXCLUDED.lottery_name,
+                    is_active = true
+            """),
+            {"user_id": user_id, "fcm_token": fcm_token, "lottery_name": lottery_name},
+        )
+        logger.info("Upserted FCM token for user %s", user_id)
 
 
 def get_active_tokens(lottery_name=None):

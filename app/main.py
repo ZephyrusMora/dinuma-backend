@@ -8,8 +8,7 @@ from app.services.firebase import init_firebase
 from app.routers.webhook import router as webhook_router
 from app.routers.notifications import router as notifications_router
 
-app.include_router(webhook_router)
-app.include_router(notifications_router)
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

@@ -56,8 +56,10 @@ def process_new_draw(payload: dict):
     draw_no = record.get("draw_no")
     draw_numbers = record.get("numbers", [])
     
-    # Supabase webhooks often send postgres arrays as strings like "{4,5,21,72}"
-    if isinstance(draw_numbers, str):
+    # Ensure draw_numbers is a list
+    if draw_numbers is None:
+        draw_numbers = []
+    elif isinstance(draw_numbers, str):
         if draw_numbers.startswith('{') and draw_numbers.endswith('}'):
             draw_numbers = [int(n.strip()) for n in draw_numbers[1:-1].split(',') if n.strip().isdigit()]
         else:
@@ -67,6 +69,9 @@ def process_new_draw(payload: dict):
                 draw_numbers = json.loads(draw_numbers)
             except:
                 draw_numbers = []
+    
+    if not isinstance(draw_numbers, list):
+        draw_numbers = []
 
     draw_letter = record.get("letter")
 
@@ -129,11 +134,9 @@ def process_new_draw(payload: dict):
                         else:
                             logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
 
-                session.commit()
                 logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")
             except Exception as e:
                 logger.error(f"Error processing Govisetha tickets for draw {draw_no}: {e}")
-                session.rollback()
         else:
             logger.info(f"No specific handler yet for lottery type: {lottery_name}")
 

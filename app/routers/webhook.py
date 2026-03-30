@@ -152,7 +152,7 @@ async def supabase_draw_webhook(request: Request, background_tasks: BackgroundTa
         logger.info(f"Ignoring webhook for table: {table_name}")
         return {"status": "ignored", "reason": f"Table {table_name} not handled"}
 
-    if action_type != "INSERT":
+    if action_type not in ("INSERT", "UPDATE"):
         logger.info(f"Ignoring webhook action type: {action_type}")
         return {"status": "ignored", "reason": f"Action {action_type} not handled"}
 

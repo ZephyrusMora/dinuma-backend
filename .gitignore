@@ -21,3 +21,4 @@ Thumbs.db
 
 # Firebase credentials — NEVER commit this file
 firebase-service-account.json
+firebase-credentials.json

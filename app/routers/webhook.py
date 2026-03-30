@@ -74,6 +74,13 @@ def process_new_draw(payload: dict):
         draw_numbers = []
 
     draw_letter = record.get("letter")
+    draw_special_component = record.get("special_component") or record.get("power_number") or record.get("power")
+    if draw_special_component is not None:
+        try:
+            draw_special_component = int(draw_special_component)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid draw special component for {lottery_name} {draw_no}: {draw_special_component}")
+            draw_special_component = None
 
     if not lottery_name or draw_no is None:
         logger.error(f"Incomplete draw record: {record}")
@@ -84,10 +91,13 @@ def process_new_draw(payload: dict):
 
     logger.info(f"Processing new draw: {lottery_name} #{draw_no}")
 
-    prize_tiers = LOTTERY_PRIZES.get(lottery_name.upper())
+    normalized_lottery_key = str(lottery_name).upper().replace('-', '_')
+    prize_tiers = LOTTERY_PRIZES.get(normalized_lottery_key)
     if not prize_tiers:
-        logger.info(f"No prize tiers found for lottery type: {lottery_name}")
+        logger.info(f"No prize tiers found for lottery type: {lottery_name} (normalized as {normalized_lottery_key})")
         return
+    
+    lottery_names = ["govisetha", "mahajana-sampatha", "nlb-jaya", "dhana-nidhanaya", "mega-power"]
 
     LOTTERY_TYPE_MAP = {
         "govisetha": "GOVISETHA",
@@ -107,53 +117,68 @@ def process_new_draw(payload: dict):
     db_lottery_type = LOTTERY_TYPE_MAP[normalized_name]
 
     with get_session() as session:
-        try:
-            query = text("""
-                SELECT id, user_id, scanned_numbers, scanned_letter
-                FROM public.tickets
-                WHERE lottery_type = :lottery_type
-                  AND draw_number = :draw_no
-                  AND status = 'PENDING'
-            """)
-            tickets = session.execute(query, {"lottery_type": db_lottery_type, "draw_no": draw_no}).fetchall()
+        lottery_key = str(lottery_name).lower()
+        if lottery_key in lottery_names:
+            try:
+                # Normalize the lottery type to match DB values (replace hyphen with underscore, uppercase)
+                lottery_type = lottery_key.replace('-', '_').upper()
 
-            logger.info(f"Found {len(tickets)} pending {db_lottery_type} tickets for draw {draw_no}")
-
-            for ticket in tickets:
-                ticket_id, user_id, scanned_nums, scanned_letter = ticket
-                t_nums = scanned_nums if isinstance(scanned_nums, list) else []
-
-                result = check_ticket_for_lottery(
-                    lottery_name=lottery_name,
-                    ticket_numbers=t_nums,
-                    ticket_letter=scanned_letter,
-                    draw_numbers=draw_numbers,
-                    draw_letter=draw_letter,
-                )
-
-                new_status = 'WIN' if result["is_winner"] else 'NO_WIN'
-                win_amt = result["win_amount"]
-
-                update_query = text("""
-                    UPDATE public.tickets
-                    SET status = :status, win_amount = :win_amt
-                    WHERE id = :id
+                query = text("""
+                    SELECT id, user_id, scanned_numbers, scanned_letter, scanned_special_component
+                    FROM public.tickets
+                    WHERE lottery_type = :lottery_type
+                      AND draw_number = :draw_no
+                      AND status = 'PENDING'
                 """)
-                session.execute(update_query, {"status": new_status, "win_amt": win_amt, "id": ticket_id})
+                tickets = session.execute(query, {"lottery_type": lottery_type, "draw_no": draw_no}).fetchall()
 
-                if result["is_winner"]:
-                    logger.info(f"Ticket {ticket_id} WON Rs {win_amt}")
-                    user_query = text("SELECT fcm_token FROM public.fcm_tokens WHERE user_id = :user_id AND is_active = true")
-                    user_record = session.execute(user_query, {"user_id": user_id}).fetchone()
+                logger.info(f"Found {len(tickets)} pending {lottery_key} tickets for draw {draw_no}")
 
-                    if user_record and user_record[0]:
-                        send_win_notification(user_record[0], lottery_name, win_amt, draw_no)
-                    else:
-                        logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
+                for ticket in tickets:
+                    ticket_id, user_id, scanned_nums, scanned_letter, scanned_special_component = ticket
+                    t_nums = scanned_nums if isinstance(scanned_nums, list) else []
+                    ticket_special_component = None
+                    if scanned_special_component is not None:
+                        try:
+                            ticket_special_component = int(scanned_special_component)
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid scanned special component for ticket {ticket_id}: {scanned_special_component}")
 
-            logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")
-        except Exception as e:
-            logger.error(f"Error processing tickets for draw {draw_no}: {e}")
+                    result = check_lottery_ticket(
+                        ticket_numbers=t_nums,
+                        ticket_letter=scanned_letter,
+                        draw_numbers=draw_numbers,
+                        draw_letter=draw_letter,
+                        prize_tiers=prize_tiers,
+                        special_component=draw_special_component,
+                        ticket_special_component=ticket_special_component
+                    )
+
+                    new_status = 'WIN' if result["is_winner"] else 'NO_WIN'
+                    win_amt = result["win_amount"]
+
+                    update_query = text("""
+                        UPDATE public.tickets
+                        SET status = :status, win_amount = :win_amt
+                        WHERE id = :id
+                    """)
+                    session.execute(update_query, {"status": new_status, "win_amt": win_amt, "id": ticket_id})
+
+                    if result["is_winner"]:
+                        logger.info(f"Ticket {ticket_id} WON Rs {win_amt}")
+                        user_query = text("SELECT fcm_token FROM public.fcm_tokens WHERE user_id = :user_id AND is_active = true")
+                        user_record = session.execute(user_query, {"user_id": user_id}).fetchone()
+
+                        if user_record and user_record[0]:
+                            send_win_notification(user_record[0], lottery_name, win_amt, draw_no)
+                        else:
+                            logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
+
+                logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")
+            except Exception as e:
+                logger.error(f"Error processing {lottery_name} tickets for draw {draw_no}: {e}")
+        else:
+            logger.info(f"No specific handler yet for lottery type: {lottery_name}")
 
 
 @router.post("/supabase-draw-event")

@@ -89,21 +89,25 @@ def process_new_draw(payload: dict):
         logger.info(f"No prize tiers found for lottery type: {lottery_name}")
         return
     
-    lottery_names = ["govisetha", "mahajana-smapatha", "nlb-jaya", "dhana-nidhanaya", "mega-power"]
+    lottery_names = ["govisetha", "mahajana-sampatha", "nlb-jaya", "dhana-nidhanaya", "mega-power"]
 
     with get_session() as session:
-        if str(lottery_name).lower() in lottery_names:
+        lottery_key = str(lottery_name).lower()
+        if lottery_key in lottery_names:
             try:
+                # Normalize the lottery type to match DB values (replace hyphen with underscore, uppercase)
+                lottery_type = lottery_key.replace('-', '_').upper()
+
                 query = text("""
                     SELECT id, user_id, scanned_numbers, scanned_letter
                     FROM public.tickets
-                    WHERE lottery_type = 'GOVISETHA'
+                    WHERE lottery_type = :lottery_type
                       AND draw_number = :draw_no
                       AND status = 'PENDING'
                 """)
-                tickets = session.execute(query, {"draw_no": draw_no}).fetchall()
+                tickets = session.execute(query, {"lottery_type": lottery_type, "draw_no": draw_no}).fetchall()
 
-                logger.info(f"Found {len(tickets)} pending Govisetha tickets for draw {draw_no}")
+                logger.info(f"Found {len(tickets)} pending {lottery_key} tickets for draw {draw_no}")
 
                 for ticket in tickets:
                     ticket_id, user_id, scanned_nums, scanned_letter = ticket

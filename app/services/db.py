@@ -2,6 +2,8 @@ import os
 import logging
 from datetime import datetime, timezone
 from contextlib import contextmanager
+from app.services.db import get_session        
+from app.services.db import upsert_fcm_token 
 
 from dotenv import load_dotenv
 from sqlalchemy import (

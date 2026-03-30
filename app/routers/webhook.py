@@ -88,9 +88,11 @@ def process_new_draw(payload: dict):
     if not prize_tiers:
         logger.info(f"No prize tiers found for lottery type: {lottery_name}")
         return
+    
+    lottery_names = ["govisetha", "mahajana-smapatha", "nlb-jaya", "dhana-nidhanaya", "mega-power"]
 
     with get_session() as session:
-        if str(lottery_name).lower() == "govisetha":
+        if str(lottery_name).lower() in lottery_names:
             try:
                 query = text("""
                     SELECT id, user_id, scanned_numbers, scanned_letter

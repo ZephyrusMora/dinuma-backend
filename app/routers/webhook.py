@@ -84,9 +84,10 @@ def process_new_draw(payload: dict):
 
     logger.info(f"Processing new draw: {lottery_name} #{draw_no}")
 
-    prize_tiers = LOTTERY_PRIZES.get(lottery_name.upper())
+    normalized_lottery_key = str(lottery_name).upper().replace('-', '_')
+    prize_tiers = LOTTERY_PRIZES.get(normalized_lottery_key)
     if not prize_tiers:
-        logger.info(f"No prize tiers found for lottery type: {lottery_name}")
+        logger.info(f"No prize tiers found for lottery type: {lottery_name} (normalized as {normalized_lottery_key})")
         return
     
     lottery_names = ["govisetha", "mahajana-sampatha", "nlb-jaya", "dhana-nidhanaya", "mega-power"]
@@ -142,7 +143,7 @@ def process_new_draw(payload: dict):
 
                 logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")
             except Exception as e:
-                logger.error(f"Error processing Govisetha tickets for draw {draw_no}: {e}")
+                logger.error(f"Error processing {lottery_name} tickets for draw {draw_no}: {e}")
         else:
             logger.info(f"No specific handler yet for lottery type: {lottery_name}")
 

@@ -10,20 +10,24 @@ from app.services.firebase import send_draw_notification
 logger = logging.getLogger(__name__)
 
 LOTTERIES = [
-    "mahajana-sampatha",
-    "zand",
+    ("mahajana-sampatha", 6099),
+    ("dhana-nidhanaya", 2161),
+    ("govisetha", 4373),
+    ("mega-power", 2479),
+    ("nlb-jaya", 399),
 ]
 
-FALLBACK_LAST_DRAW_ID = 6099
+# FALLBACK_LAST_DRAW_ID = 6099
 SL_TZ = ZoneInfo("Asia/Colombo")
 scheduler = BackgroundScheduler(timezone=SL_TZ)
 
 
 def scheduled_scrape():
     """Run one scrape for each configured lottery."""
-    for lottery_name in LOTTERIES:
+    for lottery_name, fallback_draw_number in LOTTERIES:
         try:
             max_db = get_max_draw_no(lottery_name)
+            FALLBACK_LAST_DRAW_ID = fallback_draw_number
             next_id = (max_db + 1) if max_db is not None else (FALLBACK_LAST_DRAW_ID + 1)
 
             logger.info("[%s] Attempting to scrape draw %s", lottery_name, next_id)

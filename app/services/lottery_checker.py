@@ -1,10 +1,7 @@
 import logging
-from typing import List, Optional
-
-logger = logging.getLogger(__name__)
-
-import logging
 from typing import List, Optional, Dict, Any
+
+from app.constants.prizes import LOTTERY_PRIZES
 
 logger = logging.getLogger(__name__)
 
@@ -64,3 +61,38 @@ def check_lottery_ticket(
         "is_winner": win_amount > 0,
         "win_amount": win_amount
     }
+
+
+def get_prize_tiers_for_lottery(lottery_name: str) -> Optional[List[Dict[str, Any]]]:
+    """Return prize tiers for normalized lottery names."""
+    if not lottery_name:
+        return None
+
+    normalized = lottery_name.strip().replace("-", "_").upper()
+    return LOTTERY_PRIZES.get(normalized)
+
+
+def check_ticket_for_lottery(
+    lottery_name: str,
+    ticket_numbers: List[str],
+    ticket_letter: Optional[str],
+    draw_numbers: List[int],
+    draw_letter: Optional[str],
+    special_component: Optional[int] = None,
+    ticket_special_component: Optional[int] = None,
+) -> dict:
+    """Check a ticket by lottery name, selecting the correct prize table."""
+    prize_tiers = get_prize_tiers_for_lottery(lottery_name)
+    if not prize_tiers:
+        logger.warning("No prize tiers for lottery '%s'", lottery_name)
+        return {"is_winner": False, "win_amount": 0.0}
+
+    return check_lottery_ticket(
+        ticket_numbers=ticket_numbers,
+        ticket_letter=ticket_letter,
+        draw_numbers=draw_numbers,
+        draw_letter=draw_letter,
+        prize_tiers=prize_tiers,
+        special_component=special_component,
+        ticket_special_component=ticket_special_component,
+    )

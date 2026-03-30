@@ -94,3 +94,23 @@ def test_govisetha_out_of_order_match():
     
     assert res["is_winner"] is True
     assert res["win_amount"] == 2000000.0
+
+
+def test_check_ticket_for_lottery_govisetha_super_prize():
+    from app.services.lottery_checker import check_ticket_for_lottery
+
+    ticket_numbers = ["35", "43", "46", "76"]
+    ticket_letter = "Y"
+    draw_numbers = [35, 43, 46, 76]
+    draw_letter = "y"
+
+    res = check_ticket_for_lottery(
+        lottery_name="govisetha",
+        ticket_numbers=ticket_numbers,
+        ticket_letter=ticket_letter,
+        draw_numbers=draw_numbers,
+        draw_letter=draw_letter,
+    )
+
+    assert res["is_winner"] is True
+    assert res["win_amount"] == 75031364.0

@@ -5,6 +5,11 @@ import logging
 from app.core.scheduler import start_scheduler, shutdown_scheduler
 from app.services.db import init_db
 from app.services.firebase import init_firebase
+from app.routers.webhook import router as webhook_router
+from app.routers.notifications import router as notifications_router
+
+app.include_router(webhook_router)
+app.include_router(notifications_router)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

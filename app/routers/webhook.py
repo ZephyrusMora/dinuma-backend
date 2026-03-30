@@ -121,7 +121,7 @@ def process_new_draw(payload: dict):
 
                     if result["is_winner"]:
                         logger.info(f"Ticket {ticket_id} WON Rs {win_amt}")
-                        user_query = text("SELECT fcm_token FROM public.users WHERE id = :user_id")
+                        user_query = text("SELECT fcm_token FROM public.fcm_tokens WHERE user_id = :user_id AND is_active = true")
                         user_record = session.execute(user_query, {"user_id": user_id}).fetchone()
 
                         if user_record and user_record[0]:

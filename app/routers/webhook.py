@@ -74,6 +74,13 @@ def process_new_draw(payload: dict):
         draw_numbers = []
 
     draw_letter = record.get("letter")
+    draw_special_component = record.get("special_component") or record.get("power_number") or record.get("power")
+    if draw_special_component is not None:
+        try:
+            draw_special_component = int(draw_special_component)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid draw special component for {lottery_name} {draw_no}: {draw_special_component}")
+            draw_special_component = None
 
     if not lottery_name or draw_no is None:
         logger.error(f"Incomplete draw record: {record}")
@@ -100,7 +107,7 @@ def process_new_draw(payload: dict):
                 lottery_type = lottery_key.replace('-', '_').upper()
 
                 query = text("""
-                    SELECT id, user_id, scanned_numbers, scanned_letter
+                    SELECT id, user_id, scanned_numbers, scanned_letter, scanned_special_component
                     FROM public.tickets
                     WHERE lottery_type = :lottery_type
                       AND draw_number = :draw_no
@@ -111,14 +118,23 @@ def process_new_draw(payload: dict):
                 logger.info(f"Found {len(tickets)} pending {lottery_key} tickets for draw {draw_no}")
 
                 for ticket in tickets:
-                    ticket_id, user_id, scanned_nums, scanned_letter = ticket
+                    ticket_id, user_id, scanned_nums, scanned_letter, scanned_special_component = ticket
                     t_nums = scanned_nums if isinstance(scanned_nums, list) else []
+                    ticket_special_component = None
+                    if scanned_special_component is not None:
+                        try:
+                            ticket_special_component = int(scanned_special_component)
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid scanned special component for ticket {ticket_id}: {scanned_special_component}")
+
                     result = check_lottery_ticket(
                         ticket_numbers=t_nums,
                         ticket_letter=scanned_letter,
                         draw_numbers=draw_numbers,
                         draw_letter=draw_letter,
-                        prize_tiers=prize_tiers
+                        prize_tiers=prize_tiers,
+                        special_component=draw_special_component,
+                        ticket_special_component=ticket_special_component
                     )
 
                     new_status = 'WIN' if result["is_winner"] else 'NO_WIN'

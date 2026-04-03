@@ -19,8 +19,9 @@ def init_firebase():
 
     # Check for direct JSON string in environment variable (for Heroku)
     cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
-    cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+    cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-credentials.json")
 
+    # If neither JSON string nor path is provided (unlikely with default), we still check.
     if not cred_json and not cred_path:
         raise RuntimeError("Neither FIREBASE_CREDENTIALS_JSON nor FIREBASE_CREDENTIALS_PATH set")
 

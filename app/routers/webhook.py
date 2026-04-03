@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from app.services.db import get_session
 from app.services.notification_service import send_win_notification
 from app.constants.prizes import LOTTERY_PRIZES
-from app.services.lottery_checker import check_ticket_for_lottery
+from app.services.lottery_checker import check_ticket_for_lottery, check_lottery_ticket
 from sqlmodel import Session, text
 
 logger = logging.getLogger(__name__)

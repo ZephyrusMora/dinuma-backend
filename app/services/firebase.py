@@ -95,6 +95,8 @@ def send_draw_notification(lottery_name: str, draw_no: int, tokens: list[str]) -
                     "registration-token-not-registered",
                     "invalid-argument",
                     "invalid-registration-token",
+                    "mismatched-credential",
+                    "sender-id-mismatch",
                 ):
                     deactivate_token(tokens[idx])
                     logger.info("Deactivated stale token at index %d", idx)

@@ -82,6 +82,16 @@ def send_win_notification(
             draw_no,
             fcm_token,
         )
+        from app.services.db import deactivate_token
+        deactivate_token(fcm_token)
+
+    except messaging.SenderIdMismatchError:
+        logger.warning(
+            "[FCM] Sender ID mismatch for token %s. Deactivating.",
+            fcm_token,
+        )
+        from app.services.db import deactivate_token
+        deactivate_token(fcm_token)
 
     except Exception:
         logger.exception("[FCM] Failed to send win notification for draw %s", draw_no)

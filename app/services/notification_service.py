@@ -1,27 +1,35 @@
 import os
 import logging
+import json
 
 import firebase_admin
 from firebase_admin import credentials, messaging
 
 logger = logging.getLogger(__name__)
 
-_SERVICE_ACCOUNT_PATH = os.getenv(
-    "FIREBASE_CREDENTIALS_PATH",
-    "firebase-credentials.json",
-)
+_CRED_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON")
+_CRED_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-credentials.json")
 
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate(_SERVICE_ACCOUNT_PATH)
+        if _CRED_JSON:
+            try:
+                cert_dict = json.loads(_CRED_JSON)
+                cred = credentials.Certificate(cert_dict)
+                logger.info("[Firebase] Initializing from FIREBASE_CREDENTIALS_JSON (Config Var)")
+            except json.JSONDecodeError:
+                logger.error("[Firebase] Failed to parse FIREBASE_CREDENTIALS_JSON as valid JSON")
+                raise
+        else:
+            if not os.path.exists(_CRED_PATH):
+                logger.warning("[Firebase] Credentials file not found at: %s", _CRED_PATH)
+            cred = credentials.Certificate(_CRED_PATH)
+            logger.info("[Firebase] Initializing from file: %s", _CRED_PATH)
+
         firebase_admin.initialize_app(cred)
-        logger.info("[Firebase] Admin SDK initialised from: %s", _SERVICE_ACCOUNT_PATH)
+        logger.info("[Firebase] Admin SDK initialized successfully")
     except Exception:
-        logger.exception(
-            "[Firebase] Failed to initialise Admin SDK. "
-            "Make sure %s exists and is valid.",
-            _SERVICE_ACCOUNT_PATH,
-        )
+        logger.exception("[Firebase] Failed to initialize Admin SDK.")
 
 
 def send_win_notification(

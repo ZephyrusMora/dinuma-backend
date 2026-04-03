@@ -3,6 +3,7 @@ import os
 import firebase_admin
 from firebase_admin import credentials, messaging
 from dotenv import load_dotenv
+import json
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
@@ -16,11 +17,12 @@ def init_firebase():
     if _initialized:
         return
 
+    # Check for direct JSON string in environment variable (for Heroku)
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-    if not cred_path:
-        raise RuntimeError("FIREBASE_CREDENTIALS_PATH not set")
-    if not os.path.exists(cred_path):
-        raise RuntimeError(f"Firebase credentials file not found at: {cred_path}")
+
+    if not cred_json and not cred_path:
+        raise RuntimeError("Neither FIREBASE_CREDENTIALS_JSON nor FIREBASE_CREDENTIALS_PATH set")
 
     try:
         # Try to get existing app first (initialized by notification_service.py)
@@ -28,7 +30,21 @@ def init_firebase():
         logger.info("Firebase already initialized, reusing existing app")
     except ValueError:
         # No existing app — initialize fresh
-        cred = credentials.Certificate(cred_path)
+        if cred_json:
+            try:
+                # Initialize using a dictionary (parsed JSON string)
+                cert_dict = json.loads(cred_json)
+                cred = credentials.Certificate(cert_dict)
+                logger.info("Firebase initializing using FIREBASE_CREDENTIALS_JSON")
+            except json.JSONDecodeError:
+                logger.error("Failed to parse FIREBASE_CREDENTIALS_JSON as valid JSON")
+                raise
+        else:
+            if not os.path.exists(cred_path):
+                raise RuntimeError(f"Firebase credentials file not found at: {cred_path}")
+            cred = credentials.Certificate(cred_path)
+            logger.info("Firebase initializing using FIREBASE_CREDENTIALS_PATH: %s", cred_path)
+
         firebase_admin.initialize_app(cred)
         logger.info("Firebase initialized successfully")
 

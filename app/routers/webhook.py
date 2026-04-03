@@ -16,7 +16,7 @@ router = APIRouter(
 
 
 class RegisterFcmTokenRequest(BaseModel):
-    user_id: int = Field(..., gt=0)
+    user_id: str = Field(..., min_length=5)
     fcm_token: str = Field(..., min_length=10)
 
 
@@ -31,11 +31,12 @@ def register_fcm_token(payload: RegisterFcmTokenRequest):
             raise HTTPException(status_code=404, detail="User not found")
 
         update_query = text(
-            """
-            UPDATE public.users
-            SET fcm_token = :fcm_token
-            WHERE id = :user_id
-            """
+           """
+    INSERT INTO public.fcm_tokens (user_id, fcm_token, is_active, created_at)
+    VALUES (:user_id, :fcm_token, true, now())
+    ON CONFLICT (fcm_token) DO UPDATE 
+    SET user_id = EXCLUDED.user_id, is_active = true
+"""
         )
         session.execute(
             update_query,

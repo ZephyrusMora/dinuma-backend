@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 from app.services.db import get_session
 from app.services.notification_service import send_win_notification
 from app.constants.prizes import LOTTERY_PRIZES
-from app.services.lottery_checker import check_lottery_ticket
+from app.services.lottery_checker import check_ticket_for_lottery, check_lottery_ticket
 from sqlmodel import Session, text
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ router = APIRouter(
 
 
 class RegisterFcmTokenRequest(BaseModel):
-    user_id: int = Field(..., gt=0)
+    user_id: str = Field(..., min_length=5)
     fcm_token: str = Field(..., min_length=10)
 
 
@@ -31,11 +31,12 @@ def register_fcm_token(payload: RegisterFcmTokenRequest):
             raise HTTPException(status_code=404, detail="User not found")
 
         update_query = text(
-            """
-            UPDATE public.users
-            SET fcm_token = :fcm_token
-            WHERE id = :user_id
-            """
+           """
+    INSERT INTO public.fcm_tokens (user_id, fcm_token, is_active, created_at)
+    VALUES (:user_id, :fcm_token, true, now())
+    ON CONFLICT (fcm_token) DO UPDATE 
+    SET user_id = EXCLUDED.user_id, is_active = true
+"""
         )
         session.execute(
             update_query,
@@ -74,6 +75,13 @@ def process_new_draw(payload: dict):
         draw_numbers = []
 
     draw_letter = record.get("letter")
+    draw_special_component = record.get("special_component") or record.get("power_number") or record.get("power")
+    if draw_special_component is not None:
+        try:
+            draw_special_component = int(draw_special_component)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid draw special component for {lottery_name} {draw_no}: {draw_special_component}")
+            draw_special_component = None
 
     if not lottery_name or draw_no is None:
         logger.error(f"Incomplete draw record: {record}")
@@ -84,34 +92,67 @@ def process_new_draw(payload: dict):
 
     logger.info(f"Processing new draw: {lottery_name} #{draw_no}")
 
-    prize_tiers = LOTTERY_PRIZES.get(lottery_name.upper())
+    normalized_lottery_key = str(lottery_name).upper().replace('-', '_')
+    prize_tiers = LOTTERY_PRIZES.get(normalized_lottery_key)
     if not prize_tiers:
-        logger.info(f"No prize tiers found for lottery type: {lottery_name}")
+        logger.info(f"No prize tiers found for lottery type: {lottery_name} (normalized as {normalized_lottery_key})")
+        return
+    
+    lottery_names = ["govisetha", "mahajana-sampatha", "nlb-jaya", "dhana-nidhanaya", "mega-power"]
+
+    LOTTERY_TYPE_MAP = {
+        "govisetha": "GOVISETHA",
+        "dhana-nidhanaya": "DHANA_NIDHANAYA",
+        "dhana_nidhanaya": "DHANA_NIDHANAYA",
+        "mahajana-sampatha": "MAHAJANA_SAMPATHA",
+        "mahajana_sampatha": "MAHAJANA_SAMPATHA",
+        "mega-power": "MEGA_POWER",
+        "mega_power": "MEGA_POWER",
+    }
+
+    normalized_name = str(lottery_name).strip().lower().replace(" ", "_")
+    if normalized_name not in LOTTERY_TYPE_MAP:
+        logger.info(f"No ticket processing handler yet for lottery type: {lottery_name}")
         return
 
+    db_lottery_type = LOTTERY_TYPE_MAP[normalized_name]
+
     with get_session() as session:
-        if str(lottery_name).lower() == "govisetha":
+        lottery_key = str(lottery_name).lower()
+        if lottery_key in lottery_names:
             try:
+                # Normalize the lottery type to match DB values (replace hyphen with underscore, uppercase)
+                lottery_type = lottery_key.replace('-', '_').upper()
+
                 query = text("""
-                    SELECT id, user_id, scanned_numbers, scanned_letter
+                    SELECT id, user_id, scanned_numbers, scanned_letter, scanned_special_component
                     FROM public.tickets
-                    WHERE lottery_type = 'GOVISETHA'
+                    WHERE lottery_type = :lottery_type
                       AND draw_number = :draw_no
                       AND status = 'PENDING'
                 """)
-                tickets = session.execute(query, {"draw_no": draw_no}).fetchall()
+                tickets = session.execute(query, {"lottery_type": lottery_type, "draw_no": draw_no}).fetchall()
 
-                logger.info(f"Found {len(tickets)} pending Govisetha tickets for draw {draw_no}")
+                logger.info(f"Found {len(tickets)} pending {lottery_key} tickets for draw {draw_no}")
 
                 for ticket in tickets:
-                    ticket_id, user_id, scanned_nums, scanned_letter = ticket
+                    ticket_id, user_id, scanned_nums, scanned_letter, scanned_special_component = ticket
                     t_nums = scanned_nums if isinstance(scanned_nums, list) else []
+                    ticket_special_component = None
+                    if scanned_special_component is not None:
+                        try:
+                            ticket_special_component = int(scanned_special_component)
+                        except (ValueError, TypeError):
+                            logger.warning(f"Invalid scanned special component for ticket {ticket_id}: {scanned_special_component}")
+
                     result = check_lottery_ticket(
                         ticket_numbers=t_nums,
                         ticket_letter=scanned_letter,
                         draw_numbers=draw_numbers,
                         draw_letter=draw_letter,
-                        prize_tiers=prize_tiers
+                        prize_tiers=prize_tiers,
+                        special_component=draw_special_component,
+                        ticket_special_component=ticket_special_component
                     )
 
                     new_status = 'WIN' if result["is_winner"] else 'NO_WIN'
@@ -136,7 +177,7 @@ def process_new_draw(payload: dict):
 
                 logger.info(f"Successfully processed draw {draw_no} for {lottery_name}")
             except Exception as e:
-                logger.error(f"Error processing Govisetha tickets for draw {draw_no}: {e}")
+                logger.error(f"Error processing {lottery_name} tickets for draw {draw_no}: {e}")
         else:
             logger.info(f"No specific handler yet for lottery type: {lottery_name}")
 

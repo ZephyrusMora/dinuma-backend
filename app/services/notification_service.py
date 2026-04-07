@@ -1,5 +1,6 @@
 import os
 import logging
+import json
 
 import firebase_admin
 from firebase_admin import credentials, messaging
@@ -8,11 +9,29 @@ from app.services.firebase import init_firebase
 
 logger = logging.getLogger(__name__)
 
-# Run init logic
-try:
-    init_firebase()
-except Exception:
-    logger.exception("[Firebase] NotificationService failed to initialize during module load.")
+_CRED_JSON = os.getenv("FIREBASE_CREDENTIALS_JSON")
+_CRED_PATH = os.getenv("FIREBASE_CREDENTIALS_PATH", "firebase-credentials.json")
+
+if not firebase_admin._apps:
+    try:
+        if _CRED_JSON:
+            try:
+                cert_dict = json.loads(_CRED_JSON)
+                cred = credentials.Certificate(cert_dict)
+                logger.info("[Firebase] Initializing from FIREBASE_CREDENTIALS_JSON (Config Var)")
+            except json.JSONDecodeError:
+                logger.error("[Firebase] Failed to parse FIREBASE_CREDENTIALS_JSON as valid JSON")
+                raise
+        else:
+            if not os.path.exists(_CRED_PATH):
+                logger.warning("[Firebase] Credentials file not found at: %s", _CRED_PATH)
+            cred = credentials.Certificate(_CRED_PATH)
+            logger.info("[Firebase] Initializing from file: %s", _CRED_PATH)
+
+        firebase_admin.initialize_app(cred)
+        logger.info("[Firebase] Admin SDK initialized successfully")
+    except Exception:
+        logger.exception("[Firebase] Failed to initialize Admin SDK.")
 
 
 def send_win_notification(

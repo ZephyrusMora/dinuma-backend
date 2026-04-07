@@ -3,6 +3,7 @@ import os
 import firebase_admin
 from firebase_admin import credentials, messaging
 from dotenv import load_dotenv
+import json
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
@@ -16,12 +17,12 @@ def init_firebase():
     if _initialized:
         return
 
-    import json
-    
-    # Try to initialize from environment variable containing the full JSON content (preferred for Heroku)
-    json_cred = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
-    # Alternatively try the path to a json file (preferred for local dev)
+    # Check for direct JSON string in environment variable (for Heroku)
+    cred_json = os.getenv("FIREBASE_CREDENTIALS_JSON")
     cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
+
+    if not cred_json and not cred_path:
+        raise RuntimeError("Neither FIREBASE_CREDENTIALS_JSON nor FIREBASE_CREDENTIALS_PATH set")
 
     try:
         # Check if already initialized by another module
@@ -30,20 +31,21 @@ def init_firebase():
         _initialized = True
         return
     except ValueError:
-        pass
-
-    try:
-        if json_cred:
-            logger.info("Initializing Firebase from FIREBASE_SERVICE_ACCOUNT_JSON")
-            cred_dict = json.loads(json_cred)
-            cred = credentials.Certificate(cred_dict)
-        elif cred_path:
+        # No existing app — initialize fresh
+        if cred_json:
+            try:
+                # Initialize using a dictionary (parsed JSON string)
+                cert_dict = json.loads(cred_json)
+                cred = credentials.Certificate(cert_dict)
+                logger.info("Firebase initializing using FIREBASE_CREDENTIALS_JSON")
+            except json.JSONDecodeError:
+                logger.error("Failed to parse FIREBASE_CREDENTIALS_JSON as valid JSON")
+                raise
+        else:
             if not os.path.exists(cred_path):
                 raise RuntimeError(f"Firebase credentials file not found at: {cred_path}")
-            logger.info(f"Initializing Firebase from file: {cred_path}")
             cred = credentials.Certificate(cred_path)
-        else:
-            raise RuntimeError("Neither FIREBASE_SERVICE_ACCOUNT_JSON nor FIREBASE_CREDENTIALS_PATH is set")
+            logger.info("Firebase initializing using FIREBASE_CREDENTIALS_PATH: %s", cred_path)
 
         firebase_admin.initialize_app(cred)
         logger.info("Firebase initialized successfully")

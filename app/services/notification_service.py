@@ -4,24 +4,15 @@ import logging
 import firebase_admin
 from firebase_admin import credentials, messaging
 
+from app.services.firebase import init_firebase
+
 logger = logging.getLogger(__name__)
 
-_SERVICE_ACCOUNT_PATH = os.getenv(
-    "FIREBASE_CREDENTIALS_PATH",
-    "firebase-credentials.json",
-)
-
-if not firebase_admin._apps:
-    try:
-        cred = credentials.Certificate(_SERVICE_ACCOUNT_PATH)
-        firebase_admin.initialize_app(cred)
-        logger.info("[Firebase] Admin SDK initialised from: %s", _SERVICE_ACCOUNT_PATH)
-    except Exception:
-        logger.exception(
-            "[Firebase] Failed to initialise Admin SDK. "
-            "Make sure %s exists and is valid.",
-            _SERVICE_ACCOUNT_PATH,
-        )
+# Run init logic
+try:
+    init_firebase()
+except Exception:
+    logger.exception("[Firebase] NotificationService failed to initialize during module load.")
 
 
 def send_win_notification(

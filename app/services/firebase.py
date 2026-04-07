@@ -16,23 +16,41 @@ def init_firebase():
     if _initialized:
         return
 
+    import json
+    
+    # Try to initialize from environment variable containing the full JSON content (preferred for Heroku)
+    json_cred = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    # Alternatively try the path to a json file (preferred for local dev)
     cred_path = os.getenv("FIREBASE_CREDENTIALS_PATH")
-    if not cred_path:
-        raise RuntimeError("FIREBASE_CREDENTIALS_PATH not set")
-    if not os.path.exists(cred_path):
-        raise RuntimeError(f"Firebase credentials file not found at: {cred_path}")
 
     try:
-        # Try to get existing app first (initialized by notification_service.py)
+        # Check if already initialized by another module
         firebase_admin.get_app()
         logger.info("Firebase already initialized, reusing existing app")
+        _initialized = True
+        return
     except ValueError:
-        # No existing app — initialize fresh
-        cred = credentials.Certificate(cred_path)
+        pass
+
+    try:
+        if json_cred:
+            logger.info("Initializing Firebase from FIREBASE_SERVICE_ACCOUNT_JSON")
+            cred_dict = json.loads(json_cred)
+            cred = credentials.Certificate(cred_dict)
+        elif cred_path:
+            if not os.path.exists(cred_path):
+                raise RuntimeError(f"Firebase credentials file not found at: {cred_path}")
+            logger.info(f"Initializing Firebase from file: {cred_path}")
+            cred = credentials.Certificate(cred_path)
+        else:
+            raise RuntimeError("Neither FIREBASE_SERVICE_ACCOUNT_JSON nor FIREBASE_CREDENTIALS_PATH is set")
+
         firebase_admin.initialize_app(cred)
         logger.info("Firebase initialized successfully")
-
-    _initialized = True
+        _initialized = True
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase: {e}")
+        raise
 
 
 def send_draw_notification(lottery_name: str, draw_no: int, tokens: list[str]) -> None:

@@ -87,3 +87,47 @@ def send_win_notification(
 
     except Exception:
         logger.exception("[FCM] Failed to send win notification for draw %s", draw_no)
+
+
+def send_no_luck_notification(
+    fcm_token: str,
+    lottery_name: str,
+    draw_no: int,
+) -> None:
+    """Send a push notification when a checked ticket didn't win."""
+    if not fcm_token:
+        return
+
+    try:
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title="Better luck next time!",
+                body=(
+                    f"Your {lottery_name.capitalize()} ticket #{draw_no} "
+                    "didn't win this time. Keep trying!"
+                ),
+            ),
+            data={
+                "type": "NO_LUCK",
+                "lottery_name": lottery_name,
+                "draw_no": str(draw_no),
+            },
+            token=fcm_token,
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    sound="default",
+                ),
+            ),
+            apns=messaging.APNSConfig(
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(sound="default"),
+                ),
+            ),
+        )
+
+        messaging.send(message)
+        logger.info("[FCM] No-luck notification sent for draw %s", draw_no)
+
+    except Exception:
+        logger.exception("[FCM] Failed to send no-luck notification")

@@ -2,7 +2,7 @@ import logging
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel, Field
 from app.services.db import get_session
-from app.services.notification_service import send_win_notification
+from app.services.notification_service import send_win_notification, send_no_luck_notification
 from app.constants.prizes import LOTTERY_PRIZES
 from app.services.lottery_checker import check_ticket_for_lottery, check_lottery_ticket
 from sqlmodel import Session, text
@@ -171,6 +171,15 @@ def process_new_draw(payload: dict):
 
                         if user_record and user_record[0]:
                             send_win_notification(user_record[0], lottery_name, win_amt, draw_no)
+                        else:
+                            logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
+                    else:
+                        logger.info(f"Ticket {ticket_id} did not win.")
+                        user_query = text("SELECT fcm_token FROM public.fcm_tokens WHERE user_id = :user_id AND is_active = true")
+                        user_record = session.execute(user_query, {"user_id": user_id}).fetchone()
+
+                        if user_record and user_record[0]:
+                            send_no_luck_notification(user_record[0], lottery_name, draw_no)
                         else:
                             logger.info(f"No FCM token found for user {user_id}. Skipping notification.")
 

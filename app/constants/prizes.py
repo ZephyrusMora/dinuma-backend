@@ -66,9 +66,31 @@ MAHAJANA_SAMPATHA_PRIZES = [
     {"matchedNumbers": 0, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 40,         "tierLabel": "9th Prize"},
 ]
 
+# NLB Jaya Prizes
+NLB_JAYA_PRIZES = [
+    {"matchedNumbers": 4, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 4_000_000, "tierLabel": "Super Prize"},
+    {"matchedNumbers": 4, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 600_000,   "tierLabel": "1st Prize"},
+    {"matchedNumbers": 3, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 40_000,    "tierLabel": "2nd Prize"},
+    {"matchedNumbers": 3, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 2_000,     "tierLabel": "3rd Prize"},
+    {"matchedNumbers": 2, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 500,       "tierLabel": "4th Prize"},
+    {"matchedNumbers": 2, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 100,       "tierLabel": "5th Prize"},
+    {"matchedNumbers": 1, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 100,       "tierLabel": "6th Prize"},
+    {"matchedNumbers": 1, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 40,        "tierLabel": "7th Prize"},
+    {"matchedNumbers": 0, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 40,        "tierLabel": "8th Prize"},
+]
+
+# Secondary / Bonus Prize Structure (NLB Jaya)
+NLB_JAYA_BONUS_PRIZES = [
+    {"matchedNumbers": 4, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 1_000_000, "tierLabel": "Bonus 1st Prize"},
+    {"matchedNumbers": 3, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 2_000,     "tierLabel": "Bonus 2nd Prize"},
+    {"matchedNumbers": 2, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 200,       "tierLabel": "Bonus 3rd Prize"},
+    {"matchedNumbers": 1, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 40,        "tierLabel": "Bonus 4th Prize"},
+]
+
 LOTTERY_PRIZES = {
     "DHANA_NIDHANAYA": DHANA_NIDHANAYA_PRIZES,
     "GOVISETHA": GOVISETHA_PRIZES,
     "MEGA_POWER": MEGA_POWER_PRIZES,
     "MAHAJANA_SAMPATHA": MAHAJANA_SAMPATHA_PRIZES,
+    "NLB_JAYA": NLB_JAYA_PRIZES,
 }

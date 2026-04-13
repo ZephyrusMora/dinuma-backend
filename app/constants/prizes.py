@@ -52,8 +52,23 @@ MEGA_POWER_PRIZES = [
     {"matchedNumbers": 0, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 40,          "tierLabel": "10th Prize*"},
 ]
 
+# Mahajana Sampatha Prizes
+MAHAJANA_SAMPATHA_PRIZES = [
+    {"matchedNumbers": 6, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 0,          "tierLabel": "Super Prize"},
+    {"matchedNumbers": 6, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 2_000_000,  "tierLabel": "1st Prize"},
+    {"matchedNumbers": 5, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 200_000,    "tierLabel": "2nd Prize"},
+    {"matchedNumbers": 5, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 10_000,     "tierLabel": "3rd Prize"},
+    {"matchedNumbers": 4, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 2_000,      "tierLabel": "4th Prize"},
+    {"matchedNumbers": 4, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 200,        "tierLabel": "5th Prize"},
+    {"matchedNumbers": 3, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 200,        "tierLabel": "6th Prize"},
+    {"matchedNumbers": 3, "letterMatched": False, "specialComponentMatched": False, "prizeAmount": 60,         "tierLabel": "7th Prize"},
+    {"matchedNumbers": 2, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 60,         "tierLabel": "8th Prize"},
+    {"matchedNumbers": 0, "letterMatched": True,  "specialComponentMatched": False, "prizeAmount": 40,         "tierLabel": "9th Prize"},
+]
+
 LOTTERY_PRIZES = {
     "DHANA_NIDHANAYA": DHANA_NIDHANAYA_PRIZES,
     "GOVISETHA": GOVISETHA_PRIZES,
     "MEGA_POWER": MEGA_POWER_PRIZES,
+    "MAHAJANA_SAMPATHA": MAHAJANA_SAMPATHA_PRIZES,
 }

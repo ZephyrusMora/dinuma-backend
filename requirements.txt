@@ -9,4 +9,4 @@ apscheduler
 python-dotenv
 gunicorn
 firebase-admin==6.5.0
-playwright
+playwright==1.40.0

@@ -12,6 +12,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 logger = logging.getLogger(__name__)
@@ -117,14 +118,16 @@ def insert_draw(draw_data: dict):
         except Exception:
             parsed_date = datetime.utcnow().date()
 
-        stmt = jaya_draws.insert().values(
-            lottery_name=draw_data.get("lottery_name") or "unknown",
+        stmt = pg_insert(jaya_draws).values(
+            lottery_name=draw_data.get("lottery_name"),
             draw_no=draw_no_int,
             date=parsed_date,
             letter=draw_data.get("letter") or "",
             numbers=numbers,
             created_at=datetime.utcnow(),
-        ).on_conflict_do_update(
+        )
+
+        stmt = stmt.on_conflict_do_update(
             constraint="jaya_draws_pk",
             set_={
                 "date": parsed_date,
@@ -132,6 +135,8 @@ def insert_draw(draw_data: dict):
                 "numbers": numbers,
             },
         )
+
+        conn.execute(stmt)
 
         conn.execute(stmt)
         logger.info("Inserted Jaya draw %s", draw_no_int)
@@ -170,7 +175,7 @@ def insert_dlb_draw(draw_data: dict):
         conn.execute(
             dlb_draws.insert().values(
                 lottery_id=lottery_id,
-                draw_no=str(draw_no),
+                draw_no=draw_no,
                 date=draw_data.get("date") or "",
                 letter=draw_data.get("letter") or "",
                 numbers=numbers,

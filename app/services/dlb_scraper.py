@@ -66,7 +66,7 @@ def parse_block(block: str):
 
 
 # SCRAPER
-def scrape_dlb(lottery_id: int, lottery_name: str, limit=10):
+def scrape_dlb(lottery_id: int, lottery_name: str, limit=20):
     results = []
     seen = set()
 
@@ -132,7 +132,7 @@ def run_all():
         print("==============================")
 
         try:
-            data = scrape_dlb(lid, name, limit=5)
+            data = scrape_dlb(lid, name, limit=20)
 
             for d in data:
                 print(d)

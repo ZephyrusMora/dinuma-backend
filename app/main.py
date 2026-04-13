@@ -45,10 +45,12 @@ app = FastAPI(title="NLB Lottery API", lifespan=lifespan)
 from app.routers.mahajana_sampatha import router as mahajana_router
 from app.routers.notifications import router as notifications_router
 from app.routers.webhook import router as webhook_router
+from app.routers.dlb import router as dlb_router
 
 app.include_router(mahajana_router)
 app.include_router(notifications_router)
 app.include_router(webhook_router)
+app.include_router(dlb_router)
 
 
 @app.get("/", tags=["health"])

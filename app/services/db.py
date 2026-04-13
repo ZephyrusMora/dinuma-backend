@@ -2,18 +2,16 @@ import os
 import logging
 from datetime import datetime, timezone
 from contextlib import contextmanager
-from sqlalchemy.orm import Session
-
 
 from dotenv import load_dotenv
 from sqlalchemy import (
     create_engine, Table, Column, Integer,
-    String, MetaData, Boolean, func, Date, DateTime, PrimaryKeyConstraint,text
+    String, MetaData, Boolean, func, Date, DateTime,
+    PrimaryKeyConstraint, text
 )
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
-from sqlmodel import Session
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 logger = logging.getLogger(__name__)
@@ -25,6 +23,8 @@ if not connection_uri:
 engine = create_engine(connection_uri)
 metadata = MetaData()
 
+
+# EXISTING TABLE (JAYA / NLB STYLE)
 jaya_draws = Table(
     "jaya_draws",
     metadata,
@@ -37,6 +37,24 @@ jaya_draws = Table(
     PrimaryKeyConstraint("lottery_name", "draw_no", name="jaya_draws_pk")
 )
 
+
+
+# DLB SCRAPER DATA)
+dlb_draws = Table(
+    "dlb_draws",
+    metadata,
+    Column("lottery_id", Integer, nullable=False),
+    Column("draw_no", String, nullable=False),
+    Column("date", String, nullable=False),
+    Column("letter", String, nullable=True),
+    Column("numbers", PG_ARRAY(Integer), nullable=False),
+    Column("created_at", DateTime, default=datetime.utcnow),
+    PrimaryKeyConstraint("lottery_id", "draw_no", name="dlb_draws_pk")
+)
+
+
+
+# FCM TOKENS 
 fcm_tokens = Table(
     "fcm_tokens",
     metadata,
@@ -48,19 +66,20 @@ fcm_tokens = Table(
     Column("created_at", String, default=lambda: str(datetime.now(timezone.utc))),
 )
 
+
+# DB INIT
 @contextmanager
 def get_session():
-    """Provide a transactional SQLAlchemy session."""
     with engine.begin() as conn:
         yield conn
 
+
 def init_db():
-    """Create the tables defined in metadata if they don't exist."""
     metadata.create_all(engine)
 
 
+# INSERT JAYA (NLB)
 def insert_draw(draw_data: dict):
-    """Validate and insert a single draw record, skipping duplicates."""
     draw_no = draw_data.get("draw_no")
     if draw_no is None:
         logger.warning("Skipping insert: draw_no is missing")
@@ -73,12 +92,14 @@ def insert_draw(draw_data: dict):
         return
 
     with engine.begin() as conn:
+
         existing = conn.execute(
             select(jaya_draws.c.draw_no).where(
                 (jaya_draws.c.draw_no == draw_no_int) &
                 (jaya_draws.c.lottery_name == draw_data.get("lottery_name"))
             )
         )
+
         if existing.first():
             logger.info("Draw %s already exists, skipping", draw_no_int)
             return
@@ -86,16 +107,15 @@ def insert_draw(draw_data: dict):
         numbers_list = draw_data.get("numbers") or []
         try:
             numbers = [int(n) for n in numbers_list]
-        except (ValueError, TypeError):
-            logger.warning("Skipping insert: invalid numbers for draw %s", draw_no_int)
+        except Exception:
+            logger.warning("Invalid numbers for draw %s", draw_no_int)
             return
 
         date_str = draw_data.get("date") or ""
         try:
             parsed_date = datetime.strptime(date_str, "%A %B %d, %Y").date()
         except Exception:
-            logger.warning("Invalid date format: %s", date_str)
-            return
+            parsed_date = datetime.utcnow().date()
 
         stmt = jaya_draws.insert().values(
             lottery_name=draw_data.get("lottery_name") or "unknown",
@@ -104,45 +124,84 @@ def insert_draw(draw_data: dict):
             letter=draw_data.get("letter") or "",
             numbers=numbers,
             created_at=datetime.utcnow(),
+        ).on_conflict_do_update(
+            constraint="jaya_draws_pk",
+            set_={
+                "date": parsed_date,
+                "letter": draw_data.get("letter"),
+                "numbers": numbers,
+            },
         )
 
-        try:
-            conn.execute(stmt)
-            logger.info("Inserted draw %s", draw_no_int)
-        except IntegrityError:
-            logger.exception("Failed to insert draw %s", draw_no_int)
+        conn.execute(stmt)
+        logger.info("Inserted Jaya draw %s", draw_no_int)
+
+
+
+# INSERT DLB DRAW
+def insert_dlb_draw(draw_data: dict):
+    lottery_id = draw_data.get("lottery_id")
+    draw_no = draw_data.get("draw_no")   # FIXED KEY
+
+    if lottery_id is None or draw_no is None:
+        logger.warning("Missing lottery_id or draw_no in DLB insert")
+        return
+
+    numbers_list = draw_data.get("numbers") or []
+
+    try:
+        numbers = [int(n) for n in numbers_list]
+    except Exception:
+        logger.warning("Invalid numbers for DLB draw %s", draw_no)
+        return
+
+    with engine.begin() as conn:
+
+        existing = conn.execute(
+            select(dlb_draws.c.draw_no).where(
+                (dlb_draws.c.draw_no == str(draw_no)) &
+                (dlb_draws.c.lottery_id == lottery_id)
+            )
+        )
+
+        if existing.first():
+            return
+
+        conn.execute(
+            dlb_draws.insert().values(
+                lottery_id=lottery_id,
+                draw_no=str(draw_no),
+                date=draw_data.get("date") or "",
+                letter=draw_data.get("letter") or "",
+                numbers=numbers,
+                created_at=datetime.utcnow()
+            )
+        )
 
 
 def get_max_draw_no(lottery_name: str):
-    """Return the maximum draw_no for a specific lottery, or None if empty."""
     with engine.connect() as conn:
-        try:
-            result = conn.execute(
-                select(func.max(jaya_draws.c.draw_no)).where(
-                    jaya_draws.c.lottery_name == lottery_name
-                )
+        result = conn.execute(
+            select(func.max(jaya_draws.c.draw_no)).where(
+                jaya_draws.c.lottery_name == lottery_name
             )
-            max_val = result.scalar()
-            return int(max_val) if max_val is not None else None
-        except Exception:
-            logger.exception("Failed to get max draw_no for %s", lottery_name)
-            return None
+        )
+        return result.scalar()
 
 
 def delete_old_draws(months: int = 6):
-    """Delete draws older than `months` months."""
     from datetime import timedelta
     from sqlalchemy import delete
 
-    cutoff_date = datetime.utcnow().date() - timedelta(days=30 * months)
+    cutoff = datetime.utcnow().date() - timedelta(days=30 * months)
+
     with engine.begin() as conn:
-        stmt = delete(jaya_draws).where(jaya_draws.c.date < cutoff_date)
-        result = conn.execute(stmt)
-        logger.info("Deleted %s old rows.", result.rowcount)
+        conn.execute(
+            delete(jaya_draws).where(jaya_draws.c.date < cutoff)
+        )
 
 
 def upsert_fcm_token(fcm_token: str, user_id: str | None, lottery_name: str | None):
-    """Insert a new FCM token or update it if it already exists."""
     with engine.begin() as conn:
         conn.execute(
             text("""
@@ -156,24 +215,22 @@ def upsert_fcm_token(fcm_token: str, user_id: str | None, lottery_name: str | No
             """),
             {"user_id": user_id, "fcm_token": fcm_token, "lottery_name": lottery_name},
         )
-        logger.info("Upserted FCM token for user %s", user_id)
 
 
 def get_active_tokens(lottery_name=None):
-    """Return all active FCM tokens, optionally filtered by lottery subscription."""
     with engine.connect() as conn:
         q = select(fcm_tokens.c.fcm_token).where(fcm_tokens.c.is_active == True)
+
         if lottery_name:
             q = q.where(
                 (fcm_tokens.c.lottery_name == lottery_name) |
                 (fcm_tokens.c.lottery_name == None)
             )
-        rows = conn.execute(q).fetchall()
-        return [r[0] for r in rows]
+
+        return [r[0] for r in conn.execute(q).fetchall()]
 
 
 def deactivate_token(token: str):
-    """Mark a token as inactive (e.g. after FCM reports it as invalid)."""
     with engine.begin() as conn:
         conn.execute(
             fcm_tokens.update()
@@ -182,6 +239,6 @@ def deactivate_token(token: str):
         )
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     init_db()
     print("Tables created.")

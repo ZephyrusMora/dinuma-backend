@@ -1,2 +1,4 @@
 #!/bin/bash
-playwright install chromium
+echo "Installing ALL required Playwright browsers..."
+python -m playwright install
+python -m playwright install-deps

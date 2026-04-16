@@ -10,7 +10,6 @@ affected by dyno restarts or cold boots.
 
 import logging
 from app.services.db import delete_old_draws
-from app.services.dlb_scraper import run_all
 
 logging.basicConfig(level=logging.INFO)
 

@@ -4,6 +4,8 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 from dotenv import load_dotenv
 import json
+import datetime
+import time
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
@@ -74,8 +76,14 @@ def send_draw_notification(lottery_name: str, draw_no: int, tokens: list[str]) -
             "draw_no": str(draw_no),
             "type": "new_draw",
         },
-        android=messaging.AndroidConfig(priority="high"),
+        android=messaging.AndroidConfig(
+            priority="high",
+            ttl=datetime.timedelta(hours=24),
+        ),
         apns=messaging.APNSConfig(
+            headers={
+                "apns-expiration": str(int(time.time()) + 86400)
+            },
             payload=messaging.APNSPayload(
                 aps=messaging.Aps(sound="default")
             )

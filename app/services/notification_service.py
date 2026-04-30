@@ -1,6 +1,8 @@
 import os
 import logging
 import json
+import datetime
+import time
 
 import firebase_admin
 from firebase_admin import credentials, messaging
@@ -63,12 +65,16 @@ def send_win_notification(
             token=fcm_token,
             android=messaging.AndroidConfig(
                 priority="high",
+                ttl=datetime.timedelta(hours=24),
                 notification=messaging.AndroidNotification(
                     sound="default",
                     channel_id="wins",
                 ),
             ),
             apns=messaging.APNSConfig(
+                headers={
+                    "apns-expiration": str(int(time.time()) + 86400)
+                },
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(sound="default", badge=1),
                 ),
@@ -115,11 +121,15 @@ def send_no_luck_notification(
             token=fcm_token,
             android=messaging.AndroidConfig(
                 priority="high",
+                ttl=datetime.timedelta(hours=24),
                 notification=messaging.AndroidNotification(
                     sound="default",
                 ),
             ),
             apns=messaging.APNSConfig(
+                headers={
+                    "apns-expiration": str(int(time.time()) + 86400)
+                },
                 payload=messaging.APNSPayload(
                     aps=messaging.Aps(sound="default"),
                 ),

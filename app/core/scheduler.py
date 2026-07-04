@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from app.services.mahajana_scraper import scrape_draw
+from app.services.scraper import ScraperFactory
 from app.services.db import insert_draw, get_max_draw_no, get_active_tokens
 from app.services.firebase import send_draw_notification
 
@@ -32,7 +32,7 @@ def scheduled_scrape():
 
             logger.info("[%s] Attempting to scrape draw %s", lottery_name, next_id)
 
-            data = scrape_draw(next_id, lottery_name)
+            data = ScraperFactory.scrape("nlb", next_id, lottery_name=lottery_name)
 
             if data is None:
                 logger.info("[%s] Draw %s not available yet", lottery_name, next_id)

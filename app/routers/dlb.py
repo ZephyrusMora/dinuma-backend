@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.services.dlb_scraper import scrape_dlb
+from app.services.scraper import ScraperFactory
 from app.services.db import insert_draw
 
 router = APIRouter(prefix="/dlb", tags=["DLB"])
@@ -23,7 +23,7 @@ def scrape_and_store(lottery_name: str, limit: int = 5):
     if not lottery_id:
         return {"error": "Invalid lottery name"}
 
-    data = scrape_dlb(lottery_id, lottery_name, limit)
+    data = ScraperFactory.scrape("dlb", lottery_id, lottery_name, limit=limit)
 
     inserted = 0
 

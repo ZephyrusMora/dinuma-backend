@@ -1,4 +1,4 @@
-from app.services.mahajana_scraper import scrape_draw
+from app.services.scraper import ScraperFactory
 from app.services.db import insert_draw, get_max_draw_no
 from app.services.db import delete_old_draws
 
@@ -16,7 +16,7 @@ for lottery_name, draw_id in LOTTERIES:
     print("\n--- testing", lottery_name, "draw", draw_id, "---")
     print("Max draw in DB BEFORE:", get_max_draw_no(lottery_name))
 
-    data = scrape_draw(draw_id, lottery_name)
+    data = ScraperFactory.scrape("nlb", draw_id, lottery_name=lottery_name)
     print("SCRAPED DATA:")
     print(data)
 
@@ -41,7 +41,7 @@ def scrape_lottery_range(lottery_name, start_draw_number, end_draw_number):
         print(f"\n→ Processing draw {draw_id}")
 
         try:
-            data = scrape_draw(draw_id, lottery_name)
+            data = ScraperFactory.scrape("nlb", draw_id, lottery_name=lottery_name)
 
             if data and data.get("draw_no") and data.get("numbers"):
                 insert_draw(data)

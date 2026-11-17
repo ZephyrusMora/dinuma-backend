@@ -287,15 +287,9 @@ def get_max_draw_no(lottery_name: str):
 
 
 def delete_old_draws(months: int = 6):
-    from datetime import timedelta
-    from sqlalchemy import delete
-
-    cutoff = datetime.utcnow().date() - timedelta(days=30 * months)
-
-    with engine.begin() as conn:
-        conn.execute(
-            delete(jaya_draws).where(jaya_draws.c.date < cutoff)
-        )
+    # Historical archive preservation enabled - pruning disabled
+    logger.info("delete_old_draws skipped: historical retention enabled")
+    return
 
 
 def upsert_fcm_token(fcm_token: str, user_id: str | None, lottery_name: str | None):

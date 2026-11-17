@@ -14,12 +14,22 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.sql import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
+# Look for .env in current and parent directories if not already loaded
+env_file = os.path.join(os.path.dirname(__file__), '..', '..', '.env')
+if not os.path.exists(env_file):
+    parent_env = os.path.join(os.path.dirname(__file__), '..', '..', '..', '.env')
+    if os.path.exists(parent_env):
+        env_file = parent_env
+load_dotenv(dotenv_path=env_file)
 logger = logging.getLogger(__name__)
 
 connection_uri = os.getenv("CONNECTION_URI") or os.getenv("DATABASE_URL")
 if not connection_uri:
     raise RuntimeError("CONNECTION_URI or DATABASE_URL environment variable not set")
+
+# Auto-convert plain postgresql:// to postgresql+psycopg2:// for SQLAlchemy compatibility
+if connection_uri.startswith("postgresql://"):
+    connection_uri = connection_uri.replace("postgresql://", "postgresql+psycopg2://", 1)
 
 engine = create_engine(connection_uri)
 metadata = MetaData()
@@ -40,7 +50,7 @@ jaya_draws = Table(
 
 
 
-# DLB SCRAPER DATA)
+# DLB SCRAPER DATA
 dlb_draws = Table(
     "dlb_draws",
     metadata,
@@ -49,6 +59,10 @@ dlb_draws = Table(
     Column("date", String, nullable=False),
     Column("letter", String, nullable=True),
     Column("numbers", PG_ARRAY(Integer), nullable=False),
+    Column("lottery_name", String, nullable=True),
+    Column("special_symbol", String, nullable=True),
+    Column("special_number", Integer, nullable=True),
+    Column("special_draw", String, nullable=True),
     Column("created_at", DateTime, default=datetime.utcnow),
     PrimaryKeyConstraint("lottery_id", "draw_no", name="dlb_draws_pk")
 )
@@ -137,51 +151,114 @@ def insert_draw(draw_data: dict):
         )
 
         conn.execute(stmt)
-
-        conn.execute(stmt)
         logger.info("Inserted Jaya draw %s", draw_no_int)
 
 
 
 # INSERT DLB DRAW
-def insert_dlb_draw(draw_data: dict):
+def insert_dlb_draw(draw_data: dict) -> bool:
     lottery_id = draw_data.get("lottery_id")
-    draw_no = draw_data.get("draw_no")   # FIXED KEY
+    draw_no = draw_data.get("draw_no")
 
     if lottery_id is None or draw_no is None:
         logger.warning("Missing lottery_id or draw_no in DLB insert")
-        return
+        return False
 
     numbers_list = draw_data.get("numbers") or []
-
     try:
         numbers = [int(n) for n in numbers_list]
     except Exception:
-        logger.warning("Invalid numbers for DLB draw %s", draw_no)
-        return
+        logger.warning("Invalid numbers for DLB draw %s (lottery %s)", draw_no, lottery_id)
+        return False
+
+    draw_no_str = str(draw_no).strip()
+    lottery_id_int = int(lottery_id)
+
+    # Convert special_number if present
+    sp_num = draw_data.get("special_number")
+    if sp_num is not None:
+        try:
+            sp_num = int(sp_num)
+        except (ValueError, TypeError):
+            sp_num = None
 
     with engine.begin() as conn:
-
         existing = conn.execute(
             select(dlb_draws.c.draw_no).where(
-                (dlb_draws.c.draw_no == str(draw_no)) &
-                (dlb_draws.c.lottery_id == lottery_id)
+                (dlb_draws.c.draw_no == draw_no_str) &
+                (dlb_draws.c.lottery_id == lottery_id_int)
             )
+        ).first()
+
+        if existing:
+            logger.info("DLB Draw %s for lottery %s already exists, skipping", draw_no_str, lottery_id_int)
+            return False
+
+        stmt = pg_insert(dlb_draws).values(
+            lottery_id=lottery_id_int,
+            draw_no=draw_no_str,
+            date=str(draw_data.get("date") or "").strip(),
+            letter=(draw_data.get("letter") or "").strip().upper(),
+            numbers=numbers,
+            lottery_name=draw_data.get("lottery_name") or "",
+            special_symbol=draw_data.get("special_symbol") or "",
+            special_number=sp_num,
+            special_draw=draw_data.get("special_draw") or "",
+            created_at=datetime.utcnow(),
         )
 
-        if existing.first():
-            return
-
-        conn.execute(
-            dlb_draws.insert().values(
-                lottery_id=lottery_id,
-                draw_no=draw_no,
-                date=draw_data.get("date") or "",
-                letter=draw_data.get("letter") or "",
-                numbers=numbers,
-                created_at=datetime.utcnow()
-            )
+        stmt = stmt.on_conflict_do_update(
+            constraint="dlb_draws_pk",
+            set_={
+                "date": str(draw_data.get("date") or "").strip(),
+                "letter": (draw_data.get("letter") or "").strip().upper(),
+                "numbers": numbers,
+                "lottery_name": draw_data.get("lottery_name") or "",
+                "special_symbol": draw_data.get("special_symbol") or "",
+                "special_number": sp_num,
+                "special_draw": draw_data.get("special_draw") or "",
+            },
         )
+        conn.execute(stmt)
+        logger.info("Inserted DLB draw %s for lottery %s", draw_no_str, lottery_id_int)
+        return True
+
+
+def insert_dlb_draws_batch(draw_list: list) -> int:
+    """Insert a list of DLB draw dictionaries, skipping duplicates."""
+    inserted_count = 0
+    for d in draw_list:
+        try:
+            if insert_dlb_draw(d):
+                inserted_count += 1
+        except Exception as e:
+            logger.error("Failed to insert DLB draw %s: %s", d.get("draw_no"), e)
+    return inserted_count
+
+
+def get_max_dlb_draw_no(lottery_id: int) -> int | None:
+    """Return highest integer draw_no for a given DLB lottery_id."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT MAX(CAST(draw_no AS INTEGER)) FROM public.dlb_draws WHERE lottery_id = :lid"),
+            {"lid": int(lottery_id)}
+        )
+        return result.scalar()
+
+
+def get_latest_dlb_draw(lottery_id: int) -> dict | None:
+    """Return the most recent draw row for a given DLB lottery_id."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(
+                "SELECT lottery_id, draw_no, date, letter, numbers, lottery_name, "
+                "special_symbol, special_number, special_draw, created_at "
+                "FROM public.dlb_draws WHERE lottery_id = :lid "
+                "ORDER BY CAST(draw_no AS INTEGER) DESC LIMIT 1"
+            ),
+            {"lid": int(lottery_id)}
+        ).mappings().first()
+        return dict(result) if result else None
 
 
 def get_max_draw_no(lottery_name: str):

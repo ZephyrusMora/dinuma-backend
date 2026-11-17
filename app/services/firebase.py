@@ -1,9 +1,17 @@
 import logging
 import os
-import firebase_admin
-from firebase_admin import credentials, messaging
-from dotenv import load_dotenv
 import json
+from dotenv import load_dotenv
+
+try:
+    import firebase_admin
+    from firebase_admin import credentials, messaging
+    _has_firebase_admin = True
+except ImportError:
+    firebase_admin = None
+    credentials = None
+    messaging = None
+    _has_firebase_admin = False
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '..', '.env'))
 
@@ -15,6 +23,10 @@ _initialized = False
 def init_firebase():
     global _initialized
     if _initialized:
+        return
+
+    if not _has_firebase_admin:
+        logger.warning("firebase-admin package not installed, push notifications disabled")
         return
 
     # Check for direct JSON string in environment variable (for Heroku)

@@ -4,8 +4,12 @@ from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.services.scraper import ScraperFactory
-from app.services.db import insert_draw, get_max_draw_no, get_active_tokens
-from app.services.firebase import send_draw_notification
+from app.services.db import insert_draw, get_max_draw_no, get_active_tokens, insert_dlb_draw
+try:
+    from app.services.firebase import send_draw_notification
+except (ImportError, Exception):
+    send_draw_notification = None
+from app.services.dlb_scraper import ACTIVE_DLB_LOTTERIES, scrape_dlb_latest
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +57,32 @@ def scheduled_scrape():
             # Send push notifications to subscribed users
             draw_no = data.get("draw_no")
             tokens = get_active_tokens(lottery_name)
-            if tokens:
+            if tokens and send_draw_notification:
                 send_draw_notification(lottery_name, draw_no, tokens)
 
         except Exception:
             logger.exception("scheduled_scrape failed for %s", lottery_name)
+
+
+def scheduled_dlb_scrape():
+    """Run DLB scrape for all 9 active lotteries."""
+    logger.info("=== Starting DLB Daily Scheduled Scrape ===")
+    for lid, info in ACTIVE_DLB_LOTTERIES.items():
+        try:
+            draw = scrape_dlb_latest(lid)
+            if draw and draw.get("draw_no") and draw.get("numbers"):
+                inserted = insert_dlb_draw(draw)
+                if inserted:
+                    logger.info("[%s] Scraped and inserted DLB draw %s", info["name"], draw["draw_no"])
+                    # Send push notifications if tokens exist
+                    draw_no_int = int(draw["draw_no"])
+                    tokens = get_active_tokens(info["slug"]) or get_active_tokens(info["name"])
+                    if tokens and send_draw_notification:
+                        send_draw_notification(info["name"], draw_no_int, tokens)
+                else:
+                    logger.info("[%s] DLB draw %s already up-to-date", info["name"], draw["draw_no"])
+        except Exception:
+            logger.exception("scheduled_dlb_scrape failed for %s", info["name"])
 
 
 def start_scheduler():
@@ -73,9 +98,19 @@ def start_scheduler():
                 id='mahajana_scrape',
             )
 
+        if not scheduler.get_job("dlb_scrape"):
+            scheduler.add_job(
+                scheduled_dlb_scrape,
+                "cron",
+                hour=22,
+                minute=15,
+                timezone=SL_TZ,
+                id='dlb_scrape',
+            )
+
         if not scheduler.running:
             scheduler.start()
-            logger.info("Scheduler started — mahajana_scrape runs daily at 10:00 PM SL time")
+            logger.info("Scheduler started — mahajana_scrape at 22:00, dlb_scrape at 22:15 SL time")
 
     except Exception:
         logger.exception("Failed to start scheduler")

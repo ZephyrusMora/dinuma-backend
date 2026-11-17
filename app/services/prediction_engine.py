@@ -268,6 +268,36 @@ class PredictionEngine:
 
         latest_draw = draws[-1] if draws else None
 
+        odd_sums = sum(1 for s in window_sums if s % 2 == 1)
+        w_len = len(window_sums)
+        window_stats = {
+            "window_size": effective_window,
+            "mean_sum": round(mean_sum, 2),
+            "std_sum": round(std_sum, 2),
+            "min_sum": int(np.min(window_sums)) if window_sums else 0,
+            "max_sum": int(np.max(window_sums)) if window_sums else 0,
+            "odd_sum_percentage": round(100.0 * odd_sums / w_len, 1) if w_len > 0 else 50.0,
+            "even_sum_percentage": round(100.0 * (w_len - odd_sums) / w_len, 1) if w_len > 0 else 50.0,
+        }
+
+        stats_by_num = {x["number"]: x for x in num_stats}
+        top_pool_items = [stats_by_num.get(n, {"number": n, "status": "neutral", "frequency": 0, "score": 0, "probability": 0}) for n in combined_pool]
+
+        candidate_pool_data = {
+            "pool_size": len(combined_pool),
+            "numbers": top_pool_items,
+            "tier_1_core": tier1_core,
+            "tier_2_momentum": tier2_velocity,
+            "tier_3_due": tier3_due,
+            "combined_pool_numbers": combined_pool,
+            "tier1_core_bankers": tier1_core,
+            "tier2_velocity_momentum": tier2_velocity,
+            "tier3_overdue_poisson": tier3_due,
+            "top_letters": [x["letter"] for x in letter_predictions[:3]],
+            "top_symbols": [x["symbol"] for x in symbol_predictions[:3]],
+            "top_special_balls": [x["number"] for x in special_predictions[:3]]
+        }
+
         return {
             "lottery": {
                 "id": lottery_id,
@@ -281,18 +311,15 @@ class PredictionEngine:
                 "has_special": has_special,
                 "special_pool": special_pool,
                 "total_historical_draws": total_available,
+                "total_draws_analyzed": effective_window,
+                "total_available_draws": total_available,
                 "analysis_window": effective_window,
-                "latest_draw": latest_draw
+                "latest_draw": latest_draw,
+                "latest_draw_date": latest_draw["date"] if latest_draw else None,
+                "latest_draw_no": latest_draw["draw_no"] if latest_draw else None,
             },
-            "candidate_pool": {
-                "combined_pool_numbers": combined_pool,
-                "tier1_core_bankers": tier1_core,
-                "tier2_velocity_momentum": tier2_velocity,
-                "tier3_overdue_poisson": tier3_due,
-                "top_letters": [x["letter"] for x in letter_predictions[:3]],
-                "top_symbols": [x["symbol"] for x in symbol_predictions[:3]],
-                "top_special_balls": [x["number"] for x in special_predictions[:3]]
-            },
+            "window_statistics": window_stats,
+            "candidate_pool": candidate_pool_data,
             "sum_filters": {
                 "mean_sum": round(mean_sum, 1),
                 "std_sum": round(std_sum, 1),
@@ -300,10 +327,12 @@ class PredictionEngine:
                 "recommended_max_sum": max_envelope
             },
             "predictions": predictions,
+            "heatmap": num_stats,
             "number_statistics": num_stats,
             "letter_predictions": letter_predictions[:8],
             "symbol_predictions": symbol_predictions[:8],
-            "special_predictions": special_predictions[:6]
+            "special_predictions": special_predictions[:6],
+            "special_num_predictions": special_predictions[:6]
         }
 
     @staticmethod

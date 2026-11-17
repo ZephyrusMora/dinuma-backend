@@ -107,11 +107,23 @@ class PredictionEngine:
         max_rec = max((x["recency_score"] for x in num_stats), default=1.0) or 1.0
         max_freq = max((x["frequency"] for x in num_stats), default=1) or 1
 
+        total_combined_weight = sum(
+            0.45 * (x["recency_score"] / max_rec) + 0.25 * (x["frequency"] / max_freq) + 0.30 * x["overdue_hazard"]
+            for x in num_stats
+        ) or 1.0
+
         for item in num_stats:
             norm_rec = item["recency_score"] / max_rec
             norm_freq = item["frequency"] / max_freq
             combined = 0.45 * norm_rec + 0.25 * norm_freq + 0.30 * item["overdue_hazard"]
             item["combined_weight"] = round(combined, 4)
+
+            # Individual probability of ball appearing in the upcoming draw (as percentage)
+            prob_pct = min(100.0, (count_per_draw * combined / total_combined_weight) * 100.0)
+            item["probability"] = round(prob_pct, 1)
+            item["current_gap"] = item["gap"]
+            item["score"] = item["combined_weight"]
+            item["percentage"] = item["probability"]
 
             if item["z_score"] > 1.2:
                 status = "hot"
@@ -281,7 +293,19 @@ class PredictionEngine:
         }
 
         stats_by_num = {x["number"]: x for x in num_stats}
-        top_pool_items = [stats_by_num.get(n, {"number": n, "status": "neutral", "frequency": 0, "score": 0, "probability": 0}) for n in combined_pool]
+        top_pool_items = [
+            stats_by_num.get(n, {
+                "number": n,
+                "status": "neutral",
+                "frequency": 0,
+                "score": 0,
+                "probability": 0,
+                "current_gap": 0,
+                "gap": 0,
+                "percentage": 0
+            })
+            for n in combined_pool
+        ]
 
         candidate_pool_data = {
             "pool_size": len(combined_pool),

@@ -4,9 +4,8 @@ requests
 beautifulsoup4
 psycopg2-binary
 sqlmodel
-sqlalchemy 
+sqlalchemy
 apscheduler
 python-dotenv
 gunicorn
 firebase-admin==6.5.0
-playwright==1.40.0

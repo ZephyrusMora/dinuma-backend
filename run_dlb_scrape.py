@@ -83,6 +83,14 @@ def scrape_latest_active_lotteries():
         time.sleep(0.4)
 
     logger.info("=== DLB Daily Scrape Finished: %s new draws inserted ===", total_new)
+
+    try:
+        from app.services.analytics_service import refresh_analytics_cache
+        refresh_analytics_cache(save_to_db=True)
+        logger.info("Daily analytics cache refreshed after DLB scrape.")
+    except Exception as e:
+        logger.error("Failed refreshing analytics cache: %s", e)
+
     return total_new
 
 

@@ -63,6 +63,14 @@ def scheduled_scrape():
         except Exception:
             logger.exception("scheduled_scrape failed for %s", lottery_name)
 
+    # Refresh daily analytics cache once after scrape
+    try:
+        from app.services.analytics_service import refresh_analytics_cache
+        refresh_analytics_cache(save_to_db=True)
+        logger.info("Daily analytics cache refreshed after NLB scrape")
+    except Exception:
+        logger.exception("Failed refreshing analytics cache after NLB scrape")
+
 
 def scheduled_dlb_scrape():
     """Run DLB scrape for all 9 active lotteries."""
@@ -83,6 +91,14 @@ def scheduled_dlb_scrape():
                     logger.info("[%s] DLB draw %s already up-to-date", info["name"], draw["draw_no"])
         except Exception:
             logger.exception("scheduled_dlb_scrape failed for %s", info["name"])
+
+    # Refresh daily analytics cache once after DLB scrape
+    try:
+        from app.services.analytics_service import refresh_analytics_cache
+        refresh_analytics_cache(save_to_db=True)
+        logger.info("Daily analytics cache refreshed after DLB scrape")
+    except Exception:
+        logger.exception("Failed refreshing analytics cache after DLB scrape")
 
 
 def start_scheduler():

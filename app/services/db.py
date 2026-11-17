@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from sqlalchemy import (
     create_engine, Table, Column, Integer,
     String, MetaData, Boolean, func, Date, DateTime,
-    PrimaryKeyConstraint, text
+    PrimaryKeyConstraint, text, Text
 )
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.exc import IntegrityError
@@ -79,6 +79,21 @@ fcm_tokens = Table(
     Column("lottery_name", String, nullable=True),
     Column("is_active", Boolean, default=True),
     Column("created_at", String, default=lambda: str(datetime.now(timezone.utc))),
+)
+
+
+# DAILY PRECOMPUTED ANALYTICS CACHE
+daily_analytics_cache = Table(
+    "daily_analytics_cache",
+    metadata,
+    Column("lottery_id", String, primary_key=True),
+    Column("category", String, nullable=False),
+    Column("last_draw_no", String, nullable=True),
+    Column("last_draw_date", String, nullable=True),
+    Column("prediction_data", Text, nullable=False),
+    Column("positional_data", Text, nullable=True),
+    Column("backtest_data", Text, nullable=True),
+    Column("updated_at", DateTime, default=datetime.utcnow),
 )
 
 
@@ -319,6 +334,84 @@ def deactivate_token(token: str):
             .where(fcm_tokens.c.fcm_token == token)
             .values(is_active=False)
         )
+
+
+# ── ANALYTICS CACHE & DATA QUERIES ──
+
+def upsert_analytics_cache(
+    lottery_id: str,
+    category: str,
+    last_draw_no: str | None,
+    last_draw_date: str | None,
+    prediction_json: str,
+    positional_json: str | None,
+    backtest_json: str | None
+):
+    """Upsert daily precomputed analytics JSON in Postgres."""
+    with engine.begin() as conn:
+        stmt = pg_insert(daily_analytics_cache).values(
+            lottery_id=lottery_id,
+            category=category,
+            last_draw_no=str(last_draw_no) if last_draw_no else None,
+            last_draw_date=str(last_draw_date) if last_draw_date else None,
+            prediction_data=prediction_json,
+            positional_data=positional_json,
+            backtest_data=backtest_json,
+            updated_at=datetime.utcnow()
+        )
+        stmt = stmt.on_conflict_do_update(
+            constraint="daily_analytics_cache_pkey",
+            set_={
+                "category": category,
+                "last_draw_no": str(last_draw_no) if last_draw_no else None,
+                "last_draw_date": str(last_draw_date) if last_draw_date else None,
+                "prediction_data": prediction_json,
+                "positional_data": positional_json,
+                "backtest_data": backtest_json,
+                "updated_at": datetime.utcnow()
+            }
+        )
+        conn.execute(stmt)
+
+
+def fetch_all_cached_analytics():
+    """Fetch all rows from daily_analytics_cache."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            select(
+                daily_analytics_cache.c.lottery_id,
+                daily_analytics_cache.c.category,
+                daily_analytics_cache.c.last_draw_no,
+                daily_analytics_cache.c.last_draw_date,
+                daily_analytics_cache.c.prediction_data,
+                daily_analytics_cache.c.positional_data,
+                daily_analytics_cache.c.backtest_data,
+                daily_analytics_cache.c.updated_at
+            )
+        ).mappings().all()
+        return [dict(r) for r in result]
+
+
+def fetch_all_nlb_draws():
+    """Fetch all rows from jaya_draws sorted by date ascending."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT lottery_name, draw_no, date, letter, numbers FROM public.jaya_draws ORDER BY date ASC, draw_no ASC")
+        ).mappings().all()
+        return [dict(r) for r in result]
+
+
+def fetch_all_dlb_draws():
+    """Fetch all rows from dlb_draws sorted by draw_no ascending."""
+    with engine.connect() as conn:
+        result = conn.execute(
+            text(
+                "SELECT lottery_id, draw_no, date, letter, numbers, lottery_name, special_symbol, special_number "
+                "FROM public.dlb_draws "
+                "ORDER BY CAST(draw_no AS INTEGER) ASC"
+            )
+        ).mappings().all()
+        return [dict(r) for r in result]
 
 
 if __name__ == "__main__":

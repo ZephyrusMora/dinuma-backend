@@ -9,3 +9,6 @@ apscheduler
 python-dotenv
 gunicorn
 firebase-admin==6.5.0
+numpy
+scipy
+

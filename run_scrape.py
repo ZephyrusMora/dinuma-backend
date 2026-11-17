@@ -71,6 +71,13 @@ def main():
         insert_draw(data)
         logger.info("[%s] Done — inserted draw %s", lottery_name, data.get("draw_no"))
 
+    try:
+        from app.services.analytics_service import refresh_analytics_cache
+        refresh_analytics_cache(save_to_db=True)
+        logger.info("Daily analytics cache refreshed after standalone NLB scrape.")
+    except Exception as e:
+        logger.error("Failed refreshing analytics cache: %s", e)
+
 
 if __name__ == "__main__":
     main()
